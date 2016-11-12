@@ -7,7 +7,7 @@ from distutils.core import setup
 
 setup(name='vmap',
     version='0.1.0',
-    description='Velocity map generation using the Ames Stereo Pipeline image correlator'
+    description='Velocity map generation using the Ames Stereo Pipeline image correlator',
     author='David Shean',
     author_email='dshean@gmail.com',
     license='MIT',
