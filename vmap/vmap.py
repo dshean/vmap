@@ -106,6 +106,7 @@ def make_ln(outdir, outprefix, ext):
     if os.path.lexists(ln_fn):
         os.remove(ln_fn)
     os.symlink(os.path.split(outprefix)[1]+ext, ln_fn)
+    return ln_fn
 
 #Create a dummy camera model file, so we don't have to find it
 #This may no longer be necessary, but was a clever hack 
@@ -207,10 +208,14 @@ def main():
     #Correlator tile timeout
     #With proper seeding, correlation should be very fast
     timeout = 360 
-    #Erode islands smaller than this (px), set to 0 to turn off
-    erode = 0 
+    #Correlation kernel size
+    #kernel = (35, 35)
+    kernel = (21, 21)
+    #Erode islands smaller than this (area px), set to 0 to turn off
+    #erode = 0 
+    erode = 32 
     #Set this to smooth the output F.tif with Gaussian filter
-    smoothF = False 
+    smoothF = True 
     #User-input low-res velocity maps for seeding
     #Add functions that fetch best available velocities for Ant/GrIS
     vx_fn = '' 
@@ -246,7 +251,8 @@ def main():
         ds2_clip = iolib.fn_getds(ds1_clip_fn)
 
     #Should have extra kwargs option here
-    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, timeout=timeout, erode=erode)
+    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, \
+                timeout=timeout, erode=erode)
     
     #Stereo arguments
     stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
@@ -335,14 +341,14 @@ def main():
         run_cmd('stereo_rfne', stereo_opt+stereo_args, msg='2: Refinement')
         geolib.copyproj(ds1_clip_fn, outprefix+'-RD.tif')
 
-    make_ln(outdir, outprefix, '-RD.tif')
+    d_fn = make_ln(outdir, outprefix, '-RD.tif')
 
     #Run stereo_fltr
     if not os.path.exists(outprefix+'-F.tif'):
         run_cmd('stereo_fltr', stereo_opt+stereo_args, msg='3: Filtering')
         geolib.copyproj(ds1_clip_fn, outprefix+'-F.tif')
 
-    make_ln(outdir, outprefix, '-F.tif')
+    d_fn = make_ln(outdir, outprefix, '-F.tif')
 
     if smoothF and not os.path.exists(outprefix+'-F_smooth.tif'):
         print('Smoothing F.tif')
@@ -352,7 +358,7 @@ def main():
         F_ds = gdal.Open(outprefix+'-F.tif', gdal.GA_ReadOnly)
         #import dem_downsample_fill
         #F_fill_ds = dem_downsample_fill.gdalfill_ds(F_fill_ds)
-        F_fill_ds = iolib.gtif_drv.CreateCopy(F_fill_fn, F_ds, 0, options=warplib.gdal_opt)
+        F_fill_ds = iolib.gtif_drv.CreateCopy(F_fill_fn, F_ds, 0, options=iolib.gdal_opt)
         F_ds = None
         for n in (1, 2):
             print('Smoothing band %i' % n)
@@ -368,7 +374,7 @@ def main():
             b_fill_bma = filtlib.gauss_fltr_astropy(b_fill_bma, size=9)
             b.WriteArray(b_fill_bma)
         F_fill_ds = None
-        make_ln(outdir, outprefix, '-F_smooth.tif')
+        d_fn = make_ln(outdir, outprefix, '-F_smooth.tif')
 
     #Delete intermediate files
     ds1_clip = None
@@ -378,7 +384,6 @@ def main():
     print('%s UTC\n' % datetime.utcnow())
     
     #Generate output velocity products and figure
-    d_fn = outprefix+'-RD.tif'
     cmd = ['disp2v.py', d_fn]
     subprocess.call(cmd)
 
