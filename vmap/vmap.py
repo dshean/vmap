@@ -224,8 +224,6 @@ def main():
     #Open input files
     fn1 = sys.argv[1]
     fn2 = sys.argv[2]
-    ds1 = gdal.Open(fn1, gdal.GA_ReadOnly)
-    ds2 = gdal.Open(fn2, gdal.GA_ReadOnly)
 
     outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
     #Note, issues with boost filename length here, just use vmap prefix
@@ -233,22 +231,16 @@ def main():
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
-    ds1_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn1))[0]+'_clip.tif')
-    ds2_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn2))[0]+'_clip.tif')
-    #If trouble with parallel operations using same files
-    #pid = os.getpid()
-    #ds1_clip_fn = os.path.splitext(fn1)[0]+'_clip_%i.tif' % pid 
-    #ds2_clip_fn = os.path.splitext(fn2)[0]+'_clip_%i.tif' % pid 
+    ds1_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn1))[0]+'_warp.tif')
+    ds2_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn2))[0]+'_warp.tif')
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
-        #Need to implement direct write to disk in warplib.diskwarp
-        ds1_clip, ds2_clip = warplib.memwarp_multi([ds1, ds2], \
-                            extent='intersection', res='min', r='cubic')
-        warplib.writeout(ds1_clip, ds1_clip_fn)
-        warplib.writeout(ds2_clip, ds2_clip_fn)
-    else:
-        ds1_clip = iolib.fn_getds(ds1_clip_fn)
-        ds2_clip = iolib.fn_getds(ds1_clip_fn)
+        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], \
+                            extent='intersection', res='min', r='cubic', outdir=outdir)
+
+    #Load warped versions on disk
+    ds1_clip = iolib.fn_getds(ds1_clip_fn)
+    ds2_clip = iolib.fn_getds(ds1_clip_fn)
 
     #Should have extra kwargs option here
     stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, \
