@@ -148,6 +148,7 @@ def gen_d_sub(d_sub_fn, dx, dy, pad_perc=0.1, ndv=-9999):
         band = d_sub_ds.GetRasterBand(n)
         band.SetNoDataValue(float(ndv))
     d_sub_ds = None
+
     #Now write D_sub_spread.tif - defines spread around D_sub values
     d_sub_ds = iolib.fn_getds(d_sub_fn)
     d_sub_spread_fn = os.path.splitext(d_sub_fn)[0]+'_spread.tif'
@@ -201,23 +202,34 @@ def main():
     print('%s UTC\n' % datetime.utcnow())
 
     #Should accept these through argparse
+
     #Integer correlator seeding
     seedmode = 'default' #'sparse_disp', 'velocity
+
     #Maximum thread count
     maxnthreads = 20
+
     #Correlator tile timeout
     #With proper seeding, correlation should be very fast
     timeout = 360 
+    
     #Correlation kernel size
     #kernel = (35, 35)
     kernel = (21, 21)
-    #Erode islands smaller than this (area px), set to 0 to turn off
-    #erode = 0 
-    erode = 32 
+
+    #Erode disparity map islands smaller than this (area px), set to 0 to turn off
+    erode = 1024
+
     #Set this to smooth the output F.tif with Gaussian filter
-    smoothF = True 
+    smoothF = False 
+
+    #Set this to mask input to remove vegetation
+    #Currently only supports sites where NLCD is available
+    #TODO: Need to update to global bare earth
+    maskinputs = True
+
     #User-input low-res velocity maps for seeding
-    #Add functions that fetch best available velocities for Ant/GrIS
+    #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
     vx_fn = '' 
     vy_fn = '' 
 
@@ -235,8 +247,50 @@ def main():
     ds2_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn2))[0]+'_warp.tif')
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
+        #This should write out files to new subdir
         ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], \
                             extent='intersection', res='min', r='cubic', outdir=outdir)
+        #However, if inputs have identical extent/res/proj, then link to original files
+        if not os.path.exists(ds1_clip_fn):
+            os.symlink(os.path.abspath(fn1), ds1_clip_fn)
+        if not os.path.exists(ds2_clip_fn):
+            os.symlink(os.path.abspath(fn2), ds2_clip_fn)
+
+    #Mask support - limit correlation only to rock/ice surfaces, no water/veg
+    #This masks input images - guarantee we won't waste time correlating over vegetation
+    #TODO: Add support to load arbitrary raster or shp mask
+    #TODO: Add support to load global bare earth, not just NLCD
+    if mask_input:
+        ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
+        ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
+
+        if not os.path.exists(ds1_masked_fn) or not os.path.exists(ds2_masked_fn):
+            #Load NLCD or bareground mask
+            from demcoreg.dem_mask import get_nlcd, mask_nlcd
+            nlcd_fn = get_nlcd()
+            ds1_clip = iolib.fn_getds(ds1_clip_fn)
+            #Note: use nearest here to avoid interpolated values
+            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, \
+                    r='near', outdir=outdir)[0]
+            validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
+            nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
+            iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
+
+            #Now apply to original images 
+            #validmask = validmask.astype(int)
+            for fn in (ds1_clip_fn, ds2_clip_fn):
+                ds = iolib.fn_getds(fn)
+                a = iolib.ds_getma(ds)
+                a = np.ma.array(a, mask=~(validmask))
+                if a.count() > 0:
+                    out_fn = os.path.splitext(fn)[0]+'_masked.tif'
+                    iolib.writeGTiff(a,out_fn,ds)
+                    a = None
+                else:
+                    sys.exit("No unmasked pixels over bare earth")
+
+        ds1_clip_fn = ds1_masked_fn
+        ds2_clip_fn = ds2_masked_fn
 
     #Load warped versions on disk
     ds1_clip = iolib.fn_getds(ds1_clip_fn)
@@ -252,11 +306,12 @@ def main():
     #Run stereo_pprc
     if not os.path.exists(outprefix+'-R_sub.tif'):
         run_cmd('stereo_pprc', stereo_opt+stereo_args, msg='0: Preprocessing')
-        #This should happen automatically now?
-        geolib.copyproj(ds1_clip_fn, outprefix+'-R.tif')
-        geolib.copyproj(ds1_clip_fn, outprefix+'-L.tif')
+        #Copy proj info to outputs, this should happen automatically now?
+        for ext in ('L', 'R', 'L_sub', 'R_sub', 'lMask', 'rMask', 'lMask_sub', 'rMask_sub'):
+            geolib.copyproj(ds1_clip_fn, '%s-%s.tif' % (outprefix,ext))
 
     #Prepare seeding for stereo_corr
+    #TODO: these are untested after refactoring
     if not os.path.exists(outprefix+'_D_sub.tif'):
         #Don't need to do anything for default seed-mode 1
         if seedmode == 'sparse_disp':
@@ -323,7 +378,37 @@ def main():
                         d_sub_fn = L_sub_fn.split('-L_sub')[0]+'-D_sub.tif' 
                         gen_d_sub(d_sub_fn, dx, dy)
 
-    #OK, finally run stereo_corr with appropriate seeding
+    #If the above didn't generate a D_sub.tif for seeding, run stereo_corr to generate Low-res D_sub.tif
+    if not os.path.exists(outprefix+'-D_sub.tif'):
+        newopt = ['--compute-low-res-disparity-only',]
+        run_cmd('stereo_corr', newopt+stereo_opt+stereo_args, msg='1.1: Low-res Correlation')
+    #Copy projection info to D_sub
+    geolib.copyproj(outprefix+'-L_sub.tif', outprefix+'-D_sub.tif')
+      
+    #Mask D_sub to limit correlation over bare earth surfaces
+    #This _should_ be a better approach to masking, but stereo_corr doesn't honor D_sub
+    #Now mask input images before stereo_pprc
+    #Left this in here for reference, or if this changes in ASP
+    if False:
+        D_sub_ds = gdal.Open(outprefix+'-D_sub.tif', gdal.GA_Update)
+
+        #Mask support - limit correlation only to rock/ice surfaces, no water/veg
+        from demcoreg.dem_mask import get_nlcd, mask_nlcd
+        nlcd_fn = get_nlcd()
+        nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=D_sub_ds, res=D_sub_ds, t_srs=D_sub_ds, r='near', outdir=outdir)[0]
+        validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
+        nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
+        iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
+
+        #Now apply to D_sub (band 3 is valid mask)
+        #validmask = validmask.astype(int)
+        for b in (1,2,3):
+            dsub = iolib.ds_getma(D_sub_ds, b)
+            dsub = np.ma.array(dsub, mask=~(validmask))
+            D_sub_ds.GetRasterBand(b).WriteArray(dsub.filled())
+        D_sub_ds = None
+
+    #OK, finally run stereo_corr full-res integer correlation with appropriate seeding
     if not os.path.exists(outprefix+'-D.tif'):
         run_cmd('stereo_corr', stereo_opt+stereo_args, msg='1: Correlation')
         geolib.copyproj(ds1_clip_fn, outprefix+'-D.tif')
@@ -344,12 +429,13 @@ def main():
 
     if smoothF and not os.path.exists(outprefix+'-F_smooth.tif'):
         print('Smoothing F.tif')
-        from lib import filtlib 
+        from pygeotools.lib import filtlib 
         #Fill holes and smooth F
         F_fill_fn = outprefix+'-F_smooth.tif'
         F_ds = gdal.Open(outprefix+'-F.tif', gdal.GA_ReadOnly)
         #import dem_downsample_fill
         #F_fill_ds = dem_downsample_fill.gdalfill_ds(F_fill_ds)
+        print('Creating F_smooth.tif')
         F_fill_ds = iolib.gtif_drv.CreateCopy(F_fill_fn, F_ds, 0, options=iolib.gdal_opt)
         F_ds = None
         for n in (1, 2):
@@ -357,7 +443,7 @@ def main():
             b = F_fill_ds.GetRasterBand(n)
             b_fill_bma = iolib.b_getma(b)
             #b_fill_bma = iolib.b_getma(dem_downsample_fill.gdalfill(b))
-            #Filter extreme values (careful, could lose tiny, fast things)
+            #Filter extreme values (careful, could lose areas of valid data with fastest v)
             #b_fill_bma = filtlib.perc_fltr(b_fill_bma, perc=(0.01, 99.99))
             #These filters remove extreme values and fill data gaps
             #b_fill_bma = filtlib.median_fltr_skimage(b_fill_bma, radius=7, erode=0)
@@ -377,6 +463,8 @@ def main():
     
     #Generate output velocity products and figure
     cmd = ['disp2v.py', d_fn]
+    print("Converting disparities to velocities")
+    print(cmd)
     subprocess.call(cmd)
 
 if __name__ == "__main__":

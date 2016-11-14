@@ -64,6 +64,13 @@ def main():
     t_unit = 'year'
     #t_unit = 'day'
 
+    #Generate plot of velocity magnitude with vectors overlaid
+    plot = False
+
+    #Mask defining static rock surfaces needed to remove horizontal/vertical offsets
+    #If None, will attempt to use NLCD or global bare earth
+    mask_fn = None
+
     #Input is 3-band disparity map, extract bands directly
     src_fn = sys.argv[1]
     src_ds = iolib.fn_getds(src_fn)
@@ -74,11 +81,6 @@ def main():
     #h_res /= 20
     #v_res /= 20
    
-    #Mask defining static rock surfaces
-    mask_fn = None
-    #Integrate with dem_mask functionality in demcoreg
-    #mask_fn = '/tmp/rockmask.tif'
-
     #Load horizontal and vertical disparities
     h = iolib.ds_getma(src_ds, bnum=1) 
     v = iolib.ds_getma(src_ds, bnum=2) 
@@ -101,6 +103,7 @@ def main():
     if t_unit == 'day':
         t_factor *= 365.25
 
+    print("Input dates:")
     print(t1)
     print(t2)
     print(dt)
@@ -119,28 +122,45 @@ def main():
     v_myr = v*v_res*proj_scale_factor/t_factor
     v = None
 
-    #Calibrate over static surfaces
-    if mask_fn is not None:
-        #Match disparity ds
-        mask_ds = warplib.memwarp_multi_fn([mask_fn,], extent=src_ds, res=src_ds, t_srs=src_ds)[0]
-        mask = mask_ds.GetRasterBand(1).ReadAsArray().astype(np.bool)
-        #Remove median offset from each direction
-        h_myr -= malib.fast_median(h_myr[mask])
-        v_myr -= malib.fast_median(v_myr[mask])
-
     #Velocity Magnitude
     m = np.ma.sqrt(h_myr**2+v_myr**2)
-
     print("Velocity Magnitude stats")
     malib.print_stats(m)
 
-    fig_fn = os.path.splitext(src_fn)[0]+'.png'
-    label='Velocity (m/%s)' % t_unit
-    f, ax = make_plot(m, fig_fn, label)
-    plotvec(h_myr, v_myr)
-    plt.tight_layout()
-    plt.savefig(fig_fn, dpi=300, bbox_inches='tight', pad_inches=0, edgecolor='none')
-    plt.show()
+    #Calibrate over static surfaces
+    #By default, use NLCD, otherwise global bare earth
+    if mask_fn is None:
+        from demcoreg.dem_mask import get_nlcd, mask_nlcd 
+        nlcd_fn = get_nlcd()
+        #Match disparity ds
+        #Note: using cubic here will create issues with values
+        nlcd_ds = warplib.memwarp_multi_fn([nlcd_fn,], extent=src_ds, res=src_ds, t_srs=src_ds, r='near')[0]
+        if not geolib.ds_IsEmpty(nlcd_ds):
+            mask = mask_nlcd(nlcd_ds, valid='rock')
+            print("Removing median x and y offset over static control surfaces")
+            h_myr_med = malib.fast_median(h_myr[mask])
+            v_myr_med = malib.fast_median(v_myr[mask])
+            h_myr_mad = malib.mad(h_myr[mask])
+            v_myr_mad = malib.mad(v_myr[mask])
+            print("median (+/-NMAD)")
+            print("Horizontal: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
+            print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
+            h_myr -= h_myr_med
+            v_myr -= v_myr_med 
+            #Velocity Magnitude
+            m = np.ma.sqrt(h_myr**2+v_myr**2)
+            print("Velocity Magnitude stats after correction")
+            malib.print_stats(m)
+        else:
+            print("Unable to compute offsets over static control surfaces")
+
+    if plot:
+        fig_fn = os.path.splitext(src_fn)[0]+'.png'
+        label='Velocity (m/%s)' % t_unit
+        f, ax = make_plot(m, fig_fn, label)
+        plotvec(h_myr, v_myr)
+        plt.tight_layout()
+        plt.savefig(fig_fn, dpi=300, bbox_inches='tight', pad_inches=0, edgecolor='none')
 
     print("Writing out files") 
     gt = src_ds.GetGeoTransform()
