@@ -4,7 +4,7 @@ Velocity map generation using the NASA Ames Stereo Pipeline (ASP) image correlat
 
 ## Overview
 
-The [ASP](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/) correlator is fast, memory-efficient, multi-threaded, and _generalized_.  This means it can be used for efficient feature tracking operations on two arbitrary input rasters acquired at different times.  
+The [ASP/VW](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/) correlator is fast, memory-efficient, multi-threaded, and _generalized_.  This means it can be used for efficient feature tracking operations on two arbitrary input rasters acquired at different times.  
 
 ### Command-line examples (run with no arguments for usage)
 
