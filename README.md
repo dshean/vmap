@@ -8,10 +8,10 @@ The [ASP/VW](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/) 
 
 ### Command-line examples (run with no arguments for usage)
 
-Generate a velocity map from two orthorectified images (or any raster in projected coord sys):
+Generate a velocity map from two orthorectified images (or any raster in projected coord sys, e.g. high-res DEM shaded relief maps with identical illumination):
 - `vmap.py img1_YYYYMMDD.tif img2_YYYYMMDD.tif` 
 - Generates ASP disparity maps (`'-RD.tif'`, `'-F.tif'`, `'-F_smooth.tif'`)
-- By default, calls `disp2v.py` on `'-F.tif'` to output velocities
+- By default, calls `disp2v.py` on `'-F.tif'` to generate output velocity products
 - Correlator options are currently hardcoded - can edit directly in main(), but eventually will be accepted as command-line arguments
 
 Convert output ASP disparity map to m/yr or m/day:
