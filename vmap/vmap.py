@@ -266,15 +266,21 @@ def main():
 
         if not os.path.exists(ds1_masked_fn) or not os.path.exists(ds2_masked_fn):
             #Load NLCD or bareground mask
-            from demcoreg.dem_mask import get_nlcd, mask_nlcd
+            from demcoreg.dem_mask import get_nlcd, mask_nlcd, get_bareground, mask_bareground
+
             nlcd_fn = get_nlcd()
             ds1_clip = iolib.fn_getds(ds1_clip_fn)
             #Note: use nearest here to avoid interpolated values
-            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, \
-                    r='near', outdir=outdir)[0]
+            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, \ 
+                    t_srs=ds1_clip, r='near', outdir=outdir)[0]
             validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
             nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
             iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
+
+            bg_fn = get_bareground()
+            bg_ds = warplib.diskwarp_multi_fn([bg_fn,], extent=ds1_clip, res=ds1_clip, \ 
+                    t_srs=ds1_clip, r='near', outdir=outdir)[0]
+            validmask = mask_bareground(bg_ds)
 
             #Now apply to original images 
             #validmask = validmask.astype(int)
