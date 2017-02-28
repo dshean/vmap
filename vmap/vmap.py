@@ -226,7 +226,7 @@ def main():
     #Set this to mask input to remove vegetation
     #Currently only supports sites where NLCD is available
     #TODO: Need to update to global bare earth
-    maskinputs = True
+    mask_input = True
 
     #User-input low-res velocity maps for seeding
     #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
@@ -248,8 +248,7 @@ def main():
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
         #This should write out files to new subdir
-        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], \
-                            extent='intersection', res='min', r='cubic', outdir=outdir)
+        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res='min', r='cubic', outdir=outdir)
         #However, if inputs have identical extent/res/proj, then link to original files
         if not os.path.exists(ds1_clip_fn):
             os.symlink(os.path.abspath(fn1), ds1_clip_fn)
@@ -271,16 +270,14 @@ def main():
             nlcd_fn = get_nlcd()
             ds1_clip = iolib.fn_getds(ds1_clip_fn)
             #Note: use nearest here to avoid interpolated values
-            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, \ 
-                    t_srs=ds1_clip, r='near', outdir=outdir)[0]
-            validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
+            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
+            validmask = mask_nlcd(nlcd_ds, valid='not_forest', mask_glaciers=False)
             nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
             iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
 
-            bg_fn = get_bareground()
-            bg_ds = warplib.diskwarp_multi_fn([bg_fn,], extent=ds1_clip, res=ds1_clip, \ 
-                    t_srs=ds1_clip, r='near', outdir=outdir)[0]
-            validmask = mask_bareground(bg_ds)
+            #bg_fn = get_bareground()
+            #bg_ds = warplib.diskwarp_multi_fn([bg_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
+            #validmask = mask_bareground(bg_ds, mask_glaciers=False)
 
             #Now apply to original images 
             #validmask = validmask.astype(int)
@@ -303,8 +300,7 @@ def main():
     ds2_clip = iolib.fn_getds(ds1_clip_fn)
 
     #Should have extra kwargs option here
-    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, \
-                timeout=timeout, erode=erode)
+    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, timeout=timeout, erode=erode)
     
     #Stereo arguments
     stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
@@ -324,12 +320,10 @@ def main():
             #Sparse correlation of full-res images
             stereo_opt.extend(['--corr-seed-mode', '3'])
             sparse_disp_opt = []
-            sparse_disp_opt.extend(['--Debug', '--coarse', '512', '--fine', '256', \
-                                    '--no_epipolar_fltr']) 
+            sparse_disp_opt.extend(['--Debug', '--coarse', '512', '--fine', '256', '--no_epipolar_fltr']) 
             sparse_disp_opt.extend(['-P', str(nthreads)])
             sparse_disp_args = [outprefix+'-L.tif', outprefix+'-R.tif', outprefix]
-            run_cmd('sparse_disp', sparse_disp_opt+sparse_disp_args, \
-                    msg='0.5: D_sub generation')
+            run_cmd('sparse_disp', sparse_disp_opt+sparse_disp_args, msg='0.5: D_sub generation')
         elif seedmode == 'velocity':
             if os.path.exists(vx_fn) and os.path.exists(vy_fn):
                 ds1_res = geolib.get_res(ds1_clip, square=True)[0]
@@ -343,8 +337,7 @@ def main():
                 L_sub_res = ds1_res * L_sub_scale
 
                 #Since we are likely upsampling here, use cubicspline
-                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], \
-                                        extent=ds1_clip, res=L_sub_res, r='cubicspline')
+                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, res=L_sub_res, r='cubicspline')
                 vx = iolib.ds_getma(vx_ds_clip)
                 vy = iolib.ds_getma(vy_ds_clip)
 
@@ -369,8 +362,7 @@ def main():
                     dx_p = calcperc(dx, perc=(0.5, 99.5))
                     dy_p = calcperc(dy, perc=(0.5, 99.5))
                     search_window = np.array([dx_p[0], dy_p[0], dx_p[1], dy_p[1]])
-                    search_window_area = (search_window[2]-search_window[0]) * \
-                                        (search_window[3]-search_window[1])
+                    search_window_area = (search_window[2]-search_window[0]) * (search_window[3]-search_window[1])
                     if search_window_area < search_window_area_thresh:
                         stereo_opt.extend(['--corr-seed-mode', '0'])
                         stereo_opt.append('--corr-search')
@@ -402,7 +394,8 @@ def main():
         from demcoreg.dem_mask import get_nlcd, mask_nlcd
         nlcd_fn = get_nlcd()
         nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=D_sub_ds, res=D_sub_ds, t_srs=D_sub_ds, r='near', outdir=outdir)[0]
-        validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
+        #validmask = mask_nlcd(nlcd_ds, valid='rock+ice')
+        validmask = mask_nlcd(nlcd_ds, valid='not_forest', mask_glaciers=False)
         nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
         iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
 
