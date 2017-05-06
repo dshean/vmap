@@ -38,7 +38,7 @@ def run_cmd(bin, args, **kw):
     if code != 0:
         raise Exception('Stereo step ' + kw['msg'] + ' failed')
 
-def get_stereo_opt(maxnthreads=20, kernel=(21,21), nlevels=5, spr=1, timeout=360, erode=0):
+def get_stereo_opt(maxnthreads=28, kernel=(21,21), nlevels=5, spr=1, timeout=360, erode=0):
     stereo_opt = []
 
     #This is irrelevant
@@ -55,7 +55,7 @@ def get_stereo_opt(maxnthreads=20, kernel=(21,21), nlevels=5, spr=1, timeout=360
     stereo_opt.extend(['--alignment-method', 'None'])
 
     #This should be explored further
-    #stereo_opt.append('--individually-normalize')
+    stereo_opt.append('--individually-normalize')
 
     #Set correlator kernel size
     #Smaller kernels will offer more detail but are prone to more noise
@@ -207,15 +207,16 @@ def main():
     seedmode = 'default' #'sparse_disp', 'velocity
 
     #Maximum thread count
-    maxnthreads = 20
+    maxnthreads = 28
 
     #Correlator tile timeout
     #With proper seeding, correlation should be very fast
-    timeout = 360 
+    #timeout = 360 
+    timeout = 1200 
     
     #Correlation kernel size
-    #kernel = (35, 35)
-    kernel = (21, 21)
+    kernel = (35, 35)
+    #kernel = (21, 21)
 
     #Erode disparity map islands smaller than this (area px), set to 0 to turn off
     erode = 1024
@@ -226,7 +227,7 @@ def main():
     #Set this to mask input to remove vegetation
     #Currently only supports sites where NLCD is available
     #TODO: Need to update to global bare earth
-    mask_input = True
+    mask_input = False
 
     #User-input low-res velocity maps for seeding
     #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
@@ -270,9 +271,17 @@ def main():
             nlcd_fn = get_nlcd()
             ds1_clip = iolib.fn_getds(ds1_clip_fn)
             #Note: use nearest here to avoid interpolated values
-            nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
-            validmask = mask_nlcd(nlcd_ds, valid='not_forest', mask_glaciers=False)
+            nlcd_fn_warp = os.path.join(outdir, os.path.split(os.path.splitext(nlcd_fn)[0]+'_warp.tif')[-1])
+            if not os.path.exists(nlcd_fn_warp):
+                nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
+            else:
+                nlcd_ds = gdal.Open(nlcd_fn_warp)
+           
+            #Need to check if NLCD or bareground is more appropriate
+
             nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
+            #if not os.path.exists(nlcd_mask_fn):
+            validmask = mask_nlcd(nlcd_ds, valid='not_forest', mask_glaciers=False)
             iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
 
             #bg_fn = get_bareground()
@@ -424,7 +433,7 @@ def main():
         run_cmd('stereo_fltr', stereo_opt+stereo_args, msg='3: Filtering')
         geolib.copyproj(ds1_clip_fn, outprefix+'-F.tif')
 
-    d_fn = make_ln(outdir, outprefix, '-F.tif')
+    d_fn2 = make_ln(outdir, outprefix, '-F.tif')
 
     if smoothF and not os.path.exists(outprefix+'-F_smooth.tif'):
         print('Smoothing F.tif')
