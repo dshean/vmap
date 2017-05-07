@@ -218,6 +218,9 @@ def main():
     kernel = (35, 35)
     #kernel = (21, 21)
 
+    #Sub-pixel refinement
+    spr = 1
+
     #Erode disparity map islands smaller than this (area px), set to 0 to turn off
     erode = 1024
 
@@ -238,7 +241,8 @@ def main():
     fn1 = sys.argv[1]
     fn2 = sys.argv[2]
 
-    outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
+    #outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
+    outdir = '%s__%s_vmap_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], kernel[0], spr)
     #Note, issues with boost filename length here, just use vmap prefix
     outprefix = '%s/vmap' % (outdir)
     if not os.path.exists(outdir):
@@ -312,7 +316,7 @@ def main():
     ds2_clip = iolib.fn_getds(ds1_clip_fn)
 
     #Should have extra kwargs option here
-    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, timeout=timeout, erode=erode)
+    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
     
     #Stereo arguments
     stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
