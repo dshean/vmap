@@ -249,7 +249,10 @@ def main():
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
         #This should write out files to new subdir
-        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res='min', r='cubic', outdir=outdir)
+        res = 'min'
+        #Resample images to something easier to work with
+        #res = 2.0
+        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='cubic', outdir=outdir)
         #However, if inputs have identical extent/res/proj, then link to original files
         if not os.path.exists(ds1_clip_fn):
             os.symlink(os.path.abspath(fn1), ds1_clip_fn)
