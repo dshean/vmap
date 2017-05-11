@@ -130,29 +130,30 @@ def main():
     #Calibrate over static surfaces
     #By default, use NLCD, otherwise global bare earth
     if mask_fn is None:
-        from demcoreg.dem_mask import get_nlcd, mask_nlcd 
-        nlcd_fn = get_nlcd()
+        from demcoreg.dem_mask import get_lulc_mask
         #Match disparity ds
-        #Note: using cubic here will create issues with values
-        nlcd_ds = warplib.memwarp_multi_fn([nlcd_fn,], extent=src_ds, res=src_ds, t_srs=src_ds, r='near')[0]
-        if not geolib.ds_IsEmpty(nlcd_ds):
-            mask = mask_nlcd(nlcd_ds, valid='rock')
-            print("Removing median x and y offset over static control surfaces")
-            h_myr_med = malib.fast_median(h_myr[mask])
-            v_myr_med = malib.fast_median(v_myr[mask])
-            h_myr_mad = malib.mad(h_myr[mask])
-            v_myr_mad = malib.mad(v_myr[mask])
-            print("median (+/-NMAD)")
-            print("Horizontal: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
-            print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
-            h_myr -= h_myr_med
-            v_myr -= v_myr_med 
-            #Velocity Magnitude
-            m = np.ma.sqrt(h_myr**2+v_myr**2)
-            print("Velocity Magnitude stats after correction")
-            malib.print_stats(m)
-        else:
-            print("Unable to compute offsets over static control surfaces")
+        #Can get ds first, check if empty before proceeding
+        #if not geolib.ds_IsEmpty(lulc_ds):
+        #   print("Unable to compute offsets over static control surfaces")
+        print("\nPreparing LULC mask to identify static control surfaces\n")
+        mask = get_lulc_mask(src_ds, mask_glaciers=True)
+        print("\nRemoving median x and y offset over static control surfaces")
+        h_myr_count = h_myr.count()
+        h_myr_static_count = h_myr[mask].count()
+        h_myr_med = malib.fast_median(h_myr[mask])
+        v_myr_med = malib.fast_median(v_myr[mask])
+        h_myr_mad = malib.mad(h_myr[mask])
+        v_myr_mad = malib.mad(v_myr[mask])
+        print("Static pixel count: %i (%0.1f%%)" % (h_myr_static_count, 100*float(h_myr_static_count)/h_myr_count))
+        print("median (+/-NMAD)")
+        print("Horizontal: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
+        print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
+        h_myr -= h_myr_med
+        v_myr -= v_myr_med 
+        #Velocity Magnitude
+        m = np.ma.sqrt(h_myr**2+v_myr**2)
+        print("Velocity Magnitude stats after correction")
+        malib.print_stats(m)
 
     if plot:
         fig_fn = os.path.splitext(src_fn)[0]+'.png'
