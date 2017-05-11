@@ -79,24 +79,37 @@ def get_stereo_opt(maxnthreads=28, kernel=(21,21), nlevels=5, spr=1, timeout=360
     #stereo_opt.extend(['--corr-search', '-100', '-100', '100', '100'])
 
     #Sub-pixel refinement
-    #1)Parabolic, 2)Bayes, 3)AffineAdaptive
+    #0)None, 1)Parabolic, 2)Bayes, 3)AffineAdaptive
     #See ASP doc or Shean et al, ISPRS, (2016)
     #1 is fast but lower quality, 2 is slow but highest quality, 
     #3 is a good compromise for speed and quality
     stereo_opt.extend(['--subpixel-mode', str(spr)])
 
-    #Sub-pixel kernel size
-    #ASP default is 35
-    stereo_opt.extend(['--subpixel-kernel', str(kernel[0]), str(kernel[1])])
+    #If using Semi-global matching (spr 0):
+    if spr == 0:
+        #kernel = (7,7)
+        #kernel = (11,11)
+        #Use SGM
+        stereo_opt.extend(['--stereo-algorithm', '1'])
+        #Use MGM
+        #stereo_opt.extend(['--stereo-algorithm', '2'])
+        #bro nodes had 128 GB of RAM, 28 threads, ~4.7 GB/thread
+        stereo_opt.extend(['--corr-tile-size', '3600'])
+        stereo_opt.extend(['--xcorr-threshold', '-1'])
+        stereo_opt.extend(['--median-filter-size', '5'])
+        stereo_opt.extend(['--texture-smooth-size', '11'])
+    else:
+        #Sub-pixel kernel size
+        #ASP default is 35
+        stereo_opt.extend(['--subpixel-kernel', str(kernel[0]), str(kernel[1])])
 
-    #Note: stereo_fltr throws out a lot of good data when noisy
-    #Want to play with the following options
-    #--rm-half-kernel 5 5
-    #--rm_min_matches 60
-    #--rm-threshold 3
-
-    if erode > 0:
-        stereo_opt.extend(['--erode-max-size', str(erode)])
+        #Note: stereo_fltr throws out a lot of good data when noisy
+        #Want to play with the following options
+        #--rm-half-kernel 5 5
+        #--rm_min_matches 60
+        #--rm-threshold 3
+        if erode > 0:
+            stereo_opt.extend(['--erode-max-size', str(erode)])
 
     return stereo_opt
 
@@ -214,26 +227,41 @@ def main():
     #timeout = 360 
     timeout = 1200 
     
-    #Correlation kernel size
-    kernel = (35, 35)
-    #kernel = (21, 21)
-
     #Sub-pixel refinement
+    #0)None, 1)Parabolic, 2)Bayes, 3)AffineAdaptive
+    #See ASP doc or Shean et al, ISPRS, (2016)
+    #0 is required semi-global matching
+    #1 is fast but lower quality, 2 is slow but highest quality, 
+    #3 is a good compromise for speed and quality
     spr = 1
 
-    #Erode disparity map islands smaller than this (area px), set to 0 to turn off
-    erode = 1024
+    if spr > 0:
+        #Correlation kernel size
+        #Standard correlator
+        kernel = (35, 35)
+        #kernel = (21, 21)
+        #Erode disparity map islands smaller than this (area px), set to 0 to turn off
+        erode = 1024
+    else:
+        #SGM correlator
+        #kernel = (7,7)
+        kernel = (11,11)
+        erode = 0
 
     #Set this to smooth the output F.tif with Gaussian filter
-    smoothF = False 
+    smoothF = True 
 
     #Set this to mask input to remove vegetation
-    #Currently only supports sites where NLCD is available
-    #TODO: Need to update to global bare earth
+    #Much shorter runtimes for PacificNW
     mask_input = False
+
+    res = 'min'
+    #Resample input to something easier to work with
+    #res = 4.0
 
     #User-input low-res velocity maps for seeding
     #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
+    #Automatically query GoLive velocities here
     vx_fn = '' 
     vy_fn = '' 
 
@@ -242,7 +270,7 @@ def main():
     fn2 = sys.argv[2]
 
     #outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
-    outdir = '%s__%s_vmap_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], kernel[0], spr)
+    outdir = '%s__%s_vmap_%sm_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
     #Note, issues with boost filename length here, just use vmap prefix
     outprefix = '%s/vmap' % (outdir)
     if not os.path.exists(outdir):
@@ -253,10 +281,8 @@ def main():
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
         #This should write out files to new subdir
-        res = 'min'
-        #Resample images to something easier to work with
-        #res = 2.0
-        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='cubic', outdir=outdir)
+        #ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='cubic', outdir=outdir)
+        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='average', outdir=outdir)
         #However, if inputs have identical extent/res/proj, then link to original files
         if not os.path.exists(ds1_clip_fn):
             os.symlink(os.path.abspath(fn1), ds1_clip_fn)
@@ -266,41 +292,27 @@ def main():
     #Mask support - limit correlation only to rock/ice surfaces, no water/veg
     #This masks input images - guarantee we won't waste time correlating over vegetation
     #TODO: Add support to load arbitrary raster or shp mask
-    #TODO: Add support to load global bare earth, not just NLCD
     if mask_input:
         ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
         ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
 
         if not os.path.exists(ds1_masked_fn) or not os.path.exists(ds2_masked_fn):
             #Load NLCD or bareground mask
-            from demcoreg.dem_mask import get_nlcd, mask_nlcd, get_bareground, mask_bareground
+            from demcoreg.dem_mask import get_lulc_mask
 
-            nlcd_fn = get_nlcd()
             ds1_clip = iolib.fn_getds(ds1_clip_fn)
-            #Note: use nearest here to avoid interpolated values
-            nlcd_fn_warp = os.path.join(outdir, os.path.split(os.path.splitext(nlcd_fn)[0]+'_warp.tif')[-1])
-            if not os.path.exists(nlcd_fn_warp):
-                nlcd_ds = warplib.diskwarp_multi_fn([nlcd_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
-            else:
-                nlcd_ds = gdal.Open(nlcd_fn_warp)
-           
-            #Need to check if NLCD or bareground is more appropriate
-
-            nlcd_mask_fn = os.path.join(outdir, 'nlcd_validmask.tif')
+            lulc_mask_fn = os.path.join(outdir, 'lulc_mask.tif')
             #if not os.path.exists(nlcd_mask_fn):
-            validmask = mask_nlcd(nlcd_ds, valid='not_forest', mask_glaciers=False)
-            iolib.writeGTiff(validmask, nlcd_mask_fn, nlcd_ds) 
-
-            #bg_fn = get_bareground()
-            #bg_ds = warplib.diskwarp_multi_fn([bg_fn,], extent=ds1_clip, res=ds1_clip, t_srs=ds1_clip, r='near', outdir=outdir)[0]
-            #validmask = mask_bareground(bg_ds, mask_glaciers=False)
+            lulc_mask = get_lulc_mask(ds1_clip, mask_glaciers=False, filter='not_forest')
+            iolib.writeGTiff(lulc_mask, lulc_mask_fn, ds1_clip) 
 
             #Now apply to original images 
-            #validmask = validmask.astype(int)
+            #This could be problematic for huge inputs, see apply_mask.py
+            #lulc_mask = lulc_mask.astype(int)
             for fn in (ds1_clip_fn, ds2_clip_fn):
                 ds = iolib.fn_getds(fn)
                 a = iolib.ds_getma(ds)
-                a = np.ma.array(a, mask=~(validmask))
+                a = np.ma.array(a, mask=~(lulc_mask))
                 if a.count() > 0:
                     out_fn = os.path.splitext(fn)[0]+'_masked.tif'
                     iolib.writeGTiff(a,out_fn,ds)
@@ -429,18 +441,23 @@ def main():
         geolib.copyproj(ds1_clip_fn, outprefix+'-D.tif')
 
     #Run stereo_rfne
-    if not os.path.exists(outprefix+'-RD.tif'):
-        run_cmd('stereo_rfne', stereo_opt+stereo_args, msg='2: Refinement')
-        geolib.copyproj(ds1_clip_fn, outprefix+'-RD.tif')
-
-    d_fn = make_ln(outdir, outprefix, '-RD.tif')
+    if spr > 0:
+        if not os.path.exists(outprefix+'-RD.tif'):
+            run_cmd('stereo_rfne', stereo_opt+stereo_args, msg='2: Refinement')
+            geolib.copyproj(ds1_clip_fn, outprefix+'-RD.tif')
+        d_fn = make_ln(outdir, outprefix, '-RD.tif')
+    else:
+        ln_fn = outprefix+'-RD.tif'
+        if os.path.lexists(ln_fn):
+            os.remove(ln_fn)
+        os.symlink(os.path.split(outprefix)[1]+'-D.tif', ln_fn)
 
     #Run stereo_fltr
     if not os.path.exists(outprefix+'-F.tif'):
         run_cmd('stereo_fltr', stereo_opt+stereo_args, msg='3: Filtering')
         geolib.copyproj(ds1_clip_fn, outprefix+'-F.tif')
 
-    d_fn2 = make_ln(outdir, outprefix, '-F.tif')
+    d_fn = make_ln(outdir, outprefix, '-F.tif')
 
     if smoothF and not os.path.exists(outprefix+'-F_smooth.tif'):
         print('Smoothing F.tif')
