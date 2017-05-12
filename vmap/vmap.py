@@ -165,7 +165,7 @@ def gen_d_sub(d_sub_fn, dx, dy, pad_perc=0.1, ndv=-9999):
     #Now write D_sub_spread.tif - defines spread around D_sub values
     d_sub_ds = iolib.fn_getds(d_sub_fn)
     d_sub_spread_fn = os.path.splitext(d_sub_fn)[0]+'_spread.tif'
-    d_sub_spread_ds = gtif_drv.CreateCopy(d_sub_ds)
+    d_sub_spread_ds = iolib.gtif_drv.CreateCopy(d_sub_spread_fn, d_sub_ds, 0)
     dx_spread = np.ma.abs(dx * pad_perc)
     dy_spread = np.ma.abs(dy * pad_perc)
     d_sub_spread_ds.GetRasterBand(1).WriteArray(np.rint(dx_spread.filled(ndv)).astype(np.int32))
@@ -218,6 +218,7 @@ def main():
 
     #Integer correlator seeding
     seedmode = 'default' #'sparse_disp', 'velocity
+    #seedmode = 'velocity'
 
     #Maximum thread count
     maxnthreads = 28
@@ -265,12 +266,18 @@ def main():
     vx_fn = '' 
     vy_fn = '' 
 
+    #HMA seeding
+    vdir = '/nobackup/deshean/rpcdem/hma/velocity_jpl_amaury_2013-2015'
+    vx_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.x_vel.TIF')
+    vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
+
     #Open input files
     fn1 = sys.argv[1]
     fn2 = sys.argv[2]
 
     #outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
     outdir = '%s__%s_vmap_%sm_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
+    #outdir = '%s__%s_vmap_%sm_%ipx_spm%i_seed' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
     #Note, issues with boost filename length here, just use vmap prefix
     outprefix = '%s/vmap' % (outdir)
     if not os.path.exists(outdir):
@@ -365,20 +372,22 @@ def main():
                 L_sub_res = ds1_res * L_sub_scale
 
                 #Since we are likely upsampling here, use cubicspline
-                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, res=L_sub_res, r='cubicspline')
+                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, t_srs=ds1_clip, \
+                        res=L_sub_res, r='cubicspline')
                 vx = iolib.ds_getma(vx_ds_clip)
                 vy = iolib.ds_getma(vy_ds_clip)
 
                 #Determine time interval between inputs
                 #Use to scaling of known low-res velocities
-                t_factor = timelib.get_t_factor_fn(ds1_clip_fn, ds2_clip_fn, ds=vx_ds_clip)
+                t_factor = get_t_factor_fn(ds1_clip_fn, ds2_clip_fn, ds=vx_ds_clip)
 
                 if t_factor is not None:
                     #Compute expected offset in scaled pixels 
                     dx = (vx*t_factor)/L_sub_res
+                    dy = (vy*t_factor)/L_sub_res
                     #Note: Joughin and Rignot's values are positive y up!
                     #ASP is positive y down, so need to multiply these values by -1
-                    dy = -(vy*t_factor)/L_sub_res
+                    #dy = -(vy*t_factor)/L_sub_res
 
                     #Should smooth/fill dx and dy
 
