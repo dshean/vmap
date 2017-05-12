@@ -67,6 +67,9 @@ def main():
     #Generate plot of velocity magnitude with vectors overlaid
     plot = False
 
+    #Remove offsets
+    offset = False 
+
     #Mask defining static rock surfaces needed to remove horizontal/vertical offsets
     #If None, will attempt to use NLCD or global bare earth
     mask_fn = None
@@ -127,16 +130,20 @@ def main():
     print("Velocity Magnitude stats")
     malib.print_stats(m)
 
+    offset_str = ''
     #Calibrate over static surfaces
-    #By default, use NLCD, otherwise global bare earth
-    if mask_fn is None:
-        from demcoreg.dem_mask import get_lulc_mask
-        #Match disparity ds
-        #Can get ds first, check if empty before proceeding
-        #if not geolib.ds_IsEmpty(lulc_ds):
-        #   print("Unable to compute offsets over static control surfaces")
-        print("\nPreparing LULC mask to identify static control surfaces\n")
-        mask = get_lulc_mask(src_ds, mask_glaciers=True)
+    if offset:
+        #By default, use NLCD, otherwise global bare earth
+        if mask_fn is None:
+            from demcoreg.dem_mask import get_lulc_mask
+            #Match disparity ds
+            #Can get ds first, check if empty before proceeding
+            #if not geolib.ds_IsEmpty(lulc_ds):
+            #   print("Unable to compute offsets over static control surfaces")
+            print("\nPreparing LULC mask to identify static control surfaces\n")
+            mask = get_lulc_mask(src_ds, mask_glaciers=True)
+        else:
+            mask = iolib.fn_getma(mask_fn)
         print("\nRemoving median x and y offset over static control surfaces")
         h_myr_count = h_myr.count()
         h_myr_static_count = h_myr[mask].count()
@@ -150,6 +157,7 @@ def main():
         print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
         h_myr -= h_myr_med
         v_myr -= v_myr_med 
+        offset_str = '_corr_h%0.2fma_v%0.2fma' % (h_myr_med, v_myr_med)
         #Velocity Magnitude
         m = np.ma.sqrt(h_myr**2+v_myr**2)
         print("Velocity Magnitude stats after correction")
@@ -166,7 +174,7 @@ def main():
     print("Writing out files") 
     gt = src_ds.GetGeoTransform()
     proj = src_ds.GetProjection()
-    dst_fn = os.path.splitext(src_fn)[0]+'_vm.tif'
+    dst_fn = os.path.splitext(src_fn)[0]+'_vm%s.tif' % offset_str
     iolib.writeGTiff(m, dst_fn, create=True, gt=gt, proj=proj)
     dst_fn = os.path.splitext(src_fn)[0]+'_vx.tif'
     iolib.writeGTiff(h_myr, dst_fn, create=True, gt=gt, proj=proj)
