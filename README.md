@@ -53,6 +53,7 @@ The -e flag ("editable mode", setuptools "develop mode") will allow you to modif
 
 ### Optional requirements (needed for some functionality) 
 - [imview](https://github.com/dshean/imview)
+- [demcoreg](https://github.com/dshean/demcoreg) (offset correction over bare ground surfaces)
 - [matplotlib](http://matplotlib.org/)
 - [SciPy](https://www.scipy.org/)
 
