@@ -6,7 +6,7 @@ from distutils.core import setup
 #python setup.py sdist upload
 
 setup(name='vmap',
-    version='0.1.1',
+    version='0.2.0',
     description='Velocity map generation using the Ames Stereo Pipeline image correlator',
     author='David Shean',
     author_email='dshean@gmail.com',
@@ -16,6 +16,6 @@ setup(name='vmap',
     long_description=open('README.md').read(),
     install_requires=['numpy','gdal','pygeotools','demcoreg'],
     #Note: this will write to /usr/local/bin
-    scripts=['vmap/vmap.py', 'vmap/disp2v.py', 'vmap/disp_view.sh']
+    scripts=['vmap/vmap.py', 'vmap/disp2v.py']
 )
 
