@@ -28,6 +28,11 @@ from pygeotools.lib.timelib import get_t_factor_fn
 def run_cmd(bin, args, **kw):
     #Note, need to add full executable
     binpath = find_executable(bin)
+    if binpath is None:
+        msg = ("Unable to find executable %s\n" 
+        "Install ASP and ensure it is in your PATH env variable\n" 
+        "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
+        sys.exit(msg)
     call = [binpath]
     call.extend(args)
     print(' '.join(call))
