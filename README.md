@@ -8,7 +8,7 @@ The [ASP/VW](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/) 
 
 ### Example
 
-![Rainier velocity map](docs/rainier_vmap.png)
+![Rainier velocity map](docs/rainier_vmap_sm.jpg)
 
 ### Command-line examples (run with no arguments for usage)
 
