@@ -45,6 +45,13 @@ Clone the repository and install:
 
 The -e flag ("editable mode", setuptools "develop mode") will allow you to modify source code and immediately see changes.
 
+### Notes on ASP Install
+These scripts depend on several command line utilities bundled with the NASA Ames Stereo Pipeline (ASP).  These must be in your executable path at runtime.  To do this:
+1. Download the latest [ASP](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/) binaries for your operating system (Linux or OS X).  For bleeding edge, see the daily builds.
+2. Extract: `tar -xzvf StereoPipeline-*-x86_64-*.tar.gz` (filling in the appropriate filename)
+3. Move the extracted folder to a location on your system where you store executables (e.g., `bindir="~/sw"` or `bindir="/usr/local/bin"`): `mv StereoPipeline-*-x86_64-*/ $bindir`
+4. Add the ASP bin subdirectory to your path.  In bash: `export PATH=${PATH}:$bindir/StereoPipeline-*-x86_64-*/bin`.  To make this permanent, add that line to your ~/.bashrc or ~/.bash_profile.
+
 ### Core requirements 
 - [NASA Ames Stereo Pipeline (ASP)](https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/)
 - [GDAL/OGR](http://www.gdal.org/)
