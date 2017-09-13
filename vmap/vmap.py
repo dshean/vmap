@@ -16,7 +16,6 @@ from distutils.spawn import find_executable
 
 from osgeo import gdal
 import numpy as np
-import matplotlib.pyplot as plt
 
 from pygeotools.lib import warplib
 from pygeotools.lib import geolib
