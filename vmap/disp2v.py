@@ -76,7 +76,7 @@ def getparser():
     parser.add_argument('-remove_offsets', action='store_true', help='Remove median offset from stable control surfaces, requires demcoreg or input mask')
     parser.add_argument('-mask_fn', type=str, default=None, help='Provide existing raster or vector mask for offset correction. If None, will automatically determine valid control surfaces (excluding glaciers, vegetation, etc.). This should work for any supported GDAL/OGR formats. For raster input, expects integer pixel values of 1 for valid control surfaces, 0 for surfaces to ignore during offset determination.')
     parser.add_argument('-plot', action='store_true', help='Generate plot of velocity magnitude with vectors overlaid')
-    parser.add_argument('fn', type=str, help='Disparity map filename (e.g., *-RD.tif, *-F.tif)')
+    parser.add_argument('disp_fn', type=str, help='Disparity map filename (e.g., *-RD.tif, *-F.tif)')
     return parser
 
 def main():
@@ -85,13 +85,13 @@ def main():
 
     t_unit = args.dt
     plot = args.plot 
-    offset = args.remove_offsets 
+    remove_offsets = args.remove_offsets 
     mask_fn = args.mask_fn
     if mask_fn is not None:
-        offset = True
+        remove_offsets = True
 
     #Input is 3-band disparity map, extract bands directly
-    src_fn = args.fn 
+    src_fn = args.disp_fn 
     if not iolib.fn_check(src_fn):
         sys.exit("Unable to locate input file: %s" % src_fn)
 
@@ -156,7 +156,7 @@ def main():
 
     #Remove x and y offsets over control surfaces
     offset_str = ''
-    if offset:
+    if remove_offsets:
         if mask_fn is None:
             from demcoreg.dem_mask import get_lulc_mask
             print("\nUsing demcoreg to prepare mask of stable control surfaces\n")
