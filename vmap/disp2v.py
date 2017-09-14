@@ -12,11 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import timedelta
 
-from pygeotools.lib import iolib
-from pygeotools.lib import malib
-from pygeotools.lib import geolib
-from pygeotools.lib import warplib
-from pygeotools.lib import timelib
+from pygeotools.lib import iolib, malib, geolib, warplib, timelib
 
 def make_plot(m, fig_fn, label):
     f, ax = plt.subplots(figsize=(7,7))
@@ -31,6 +27,22 @@ def make_plot(m, fig_fn, label):
     cb = plt.colorbar(imgplot, orientation='vertical', extend='both', shrink=0.5)
     cb.set_label(label)
     return f, ax
+
+#Streamline plot
+def streamline_plt(u,v,bg=None):
+    """
+    Generate a stremline plot for velocity field
+    This needs further development and testing
+    """
+    dx = 1
+    m = np.ma.sqrt(u*u + v*v)
+    x,y = np.meshgrid(np.arange(0,u.shape[1],dx),np.arange(0,u.shape[0],dx))
+    if bg is None:
+        bg = m
+    plt.imshow(bg)
+    #plt.streamplot(x,y,u,v,color='k', linewidth=5*m/m.max())
+    plt.streamplot(x,y,u,v,color='k')
+    plt.show()
 
 def compute_stride(a):
     return stride
