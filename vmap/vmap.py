@@ -9,17 +9,15 @@
 
 import sys
 import os
+import argparse
 import subprocess
-from multiprocessing import cpu_count
 from datetime import datetime, timedelta
 from distutils.spawn import find_executable
 
 from osgeo import gdal
 import numpy as np
 
-from pygeotools.lib import warplib
-from pygeotools.lib import geolib
-from pygeotools.lib import iolib
+from pygeotools.lib import warplib, geolib, iolib
 from pygeotools.lib.malib import calcperc 
 from pygeotools.lib.timelib import get_t_factor_fn
 
@@ -42,57 +40,30 @@ def run_cmd(bin, args, **kw):
     if code != 0:
         raise Exception('Stereo step ' + kw['msg'] + ' failed')
 
-def get_stereo_opt(maxnthreads=28, kernel=(21,21), nlevels=5, spr=1, timeout=360, erode=0):
+def get_stereo_opt(maxnthreads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, erode=0):
     stereo_opt = []
-
     #This is irrelevant
     stereo_opt.extend(['-t', 'pinhole'])
-    
-    #Set number of threads/cores to use
-    #Use all CPUs if possible
-    nthreads = cpu_count() 
+    #Set number of threads/cores to use (will use all CPUs if possible)
+    nthreads = iolib.cpu_count() 
     if nthreads > maxnthreads:
         nthreads = maxnthreads
     stereo_opt.extend(['--threads', str(nthreads)])
-
     #This assumes input images are already mapped 
     stereo_opt.extend(['--alignment-method', 'None'])
-
     #This should be explored further
     stereo_opt.append('--individually-normalize')
-
-    #Set correlator kernel size
-    #Smaller kernels will offer more detail but are prone to more noise
-    #No triangulation filters here
-
-    #Because surface is changing between image interval, using larger kernel can help
-    #Good choices are 11, 21 (ASP default), 35, 71 
+    #Integer correlator kernel size
     stereo_opt.extend(['--corr-kernel', str(kernel[0]), str(kernel[1])])
-   
-    #Numer of gaussian pyramids to use
-    #Can look at texture in GDAL overviews to make a decision
-    #If you can see plenty of texture at 1/32 resolution, go with 5 
-    #For featureless areas, limiting to 2 can help, or even 0
     stereo_opt.extend(['--corr-max-levels', str(nlevels)])
-  
     if timeout > 0:
         stereo_opt.extend(['--corr-timeout', str(timeout)])
-
     #Define the search area
     #Useful if you know your orhotorectification is good to, say 100 pixels in any direction
     #stereo_opt.extend(['--corr-search', '-100', '-100', '100', '100'])
-
-    #Sub-pixel refinement
-    #0)None, 1)Parabolic, 2)Bayes, 3)AffineAdaptive
-    #See ASP doc or Shean et al, ISPRS, (2016)
-    #1 is fast but lower quality, 2 is slow but highest quality, 
-    #3 is a good compromise for speed and quality
     stereo_opt.extend(['--subpixel-mode', str(spr)])
-
     #If using Semi-global matching (spr 0):
-    if spr == 0:
-        #kernel = (7,7)
-        #kernel = (11,11)
+    if spr > 3:
         #Use SGM
         stereo_opt.extend(['--stereo-algorithm', '1'])
         #Use MGM
@@ -103,10 +74,9 @@ def get_stereo_opt(maxnthreads=28, kernel=(21,21), nlevels=5, spr=1, timeout=360
         stereo_opt.extend(['--median-filter-size', '5'])
         stereo_opt.extend(['--texture-smooth-size', '11'])
     else:
-        #Sub-pixel kernel size
-        #ASP default is 35
+        #Sub-pixel kernel size (ASP default is 35)
+        #Set to same as integer correlator kernel
         stereo_opt.extend(['--subpixel-kernel', str(kernel[0]), str(kernel[1])])
-
         #Note: stereo_fltr throws out a lot of good data when noisy
         #Want to play with the following options
         #--rm-half-kernel 5 5
@@ -114,7 +84,6 @@ def get_stereo_opt(maxnthreads=28, kernel=(21,21), nlevels=5, spr=1, timeout=360
         #--rm-threshold 3
         if erode > 0:
             stereo_opt.extend(['--erode-max-size', str(erode)])
-
     return stereo_opt
 
 def make_ln(outdir, outprefix, ext):
@@ -194,61 +163,70 @@ def get_vel(fn, fill=True):
     m = np.ma.sqrt(u*u + v*v)
     return u, v, m
 
-#Streamline plot
-def streamline_plt(u,v,bg=None):
-    dx = 1
-    m = np.ma.sqrt(u*u + v*v)
-    x,y = np.meshgrid(np.arange(0,u.shape[1],dx),np.arange(0,u.shape[0],dx))
-    if bg is None:
-        bg = m
-    plt.imshow(bg)
-    #plt.streamplot(x,y,u,v,color='k', linewidth=5*m/m.max())
-    plt.streamplot(x,y,u,v,color='k')
-    plt.show()
+def getparser():
+    parser = argparse.ArgumentParser(description="Generate velocity map via feature-tracking")
+    parser.add_argument('-outdir', default=None, help='Output directory')
+    parser.add_argument('-tr', default='min', help='Output resolution (default: %(default)s)')
 
-#Quiver plot
-#Currently in disp2v.py
+    #Set correlator kernel size
+    parser.add_argument('-kernel', type=int, default=35, help='Correlator kernel size. Smaller kernels offer more detail but are prone to more noise. Odd integers required (~9-51 px recommended). (default: %(default)s)')
 
-#Inputs can be DEM, DRG, image, etc.
-#Only 2 input datsets allowed for this - want to stay modular
+    #Integer correlator seeding
+    #D_sub is low-resolution correlation (default), which works well for most situations
+    #sparse_disp will use sparse seeding from full-res chips, useful for ice sheets with limited low-frequency texture
+    #existing_velocity will accept existing vx and vy rasters.  Useful for limiting search range and limiting blunders.  Measures products are useful for ice sheets.
+    seedmode_choices = ['D_sub', 'sparse_disp', 'existing_velocity']
+    parser.add_argument('-seedmode', type=str, choices=seedmode_choices, default='D_sub', help='Seeding option (default: %(default)s)')
+    parser.add_argument('-vx_fn', type=str, default=None, help='Seed E-W velocity map filename')
+    parser.add_argument('-vy_fn', type=str, default=None, help='Seed N-S velocity map filename')
+    
+    #Sub-pixel refinement
+    #0) None, 1) Parabolic, 2) Bayes, 3) AffineAdaptive
+    #See ASP doc or Shean et al, ISPRS, (2016)
+    #1 is fast but lower quality
+    #2 is slow but highest quality, 
+    #3 is a good compromise for speed and quality
+    refinement_choices = range(12)
+    parser.add_argument('-refinement', type=int, default=1, help='Sub-pixel refinement type (see ASP doc): 0) None, 1) Parabolic, 2) Bayes, 3) AffineAdaptive 4) LK, 5) Bayes w/gamma, 6) SGM Linear, 7) SGM Poly4, 8) SGM Cos, 9) SGM Parabola, 10) SGM None, 11) SGM Blend (default: %(default)s)')
+    #Numer of gaussian pyramids to use
+    #Can look at texture in GDAL overviews to make a decision
+    #If you can see plenty of texture at 1/32 resolution, go with 5 
+    #For featureless areas, limiting to 2 can help, or even 0
+    parser.add_argument('-pyramid-levels', type=int, default=5, help='Number of pyramid levels for correlation (default: %(default)s)')
+
+    #This helps get rid of bogus "islands" in the disparity maps
+    parser.add_argument('-erode', type=int, default=1024, help='Erode isolated blobs smaller than this many pixels. Set to 0 to disable (default: %(default)s)')
+
+    #This masks input images to improve performance.  Useful for forested areas.
+    parser.add_argument('-mask_veg', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
+
+    #Inputs can be images, DEMs, shaded relief maps
+    #Personal experience suggests multi-directional hillshades with identical illumination work well
+    #Only 2 input datsets allowed for this - want to stay modular
+    parser.add_argument('fn1', type=str, help='Raster filename 1')
+    parser.add_argument('fn2', type=str, help='Raster filename 2')
+    return parser
+
 def main():
-    if len(sys.argv) != 3:
-        sys.exit("Usage: %s img1.tif img2.tif" % os.path.basename(sys.argv[0]))
+    parser = getparser()
+    args = parser.parse_args()
 
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
 
-    #Should accept these through argparse
-
-    #Integer correlator seeding
-    seedmode = 'default' #'sparse_disp', 'velocity
-    #seedmode = 'velocity'
-
+    seedmode = args.seedmode
+    spr = args.refinement
+    erode = args.erode
     #Maximum thread count
     maxnthreads = 28
-
     #Correlator tile timeout
     #With proper seeding, correlation should be very fast
     #timeout = 360 
     timeout = 1200 
-    
-    #Sub-pixel refinement
-    #0)None, 1)Parabolic, 2)Bayes, 3)AffineAdaptive
-    #See ASP doc or Shean et al, ISPRS, (2016)
-    #0 is required semi-global matching
-    #1 is fast but lower quality, 2 is slow but highest quality, 
-    #3 is a good compromise for speed and quality
-    spr = 1
 
-    if spr > 0:
-        #Correlation kernel size
-        #Standard correlator
-        kernel = (35, 35)
-        #kernel = (21, 21)
-        #Erode disparity map islands smaller than this (area px), set to 0 to turn off
-        erode = 1024
-    else:
-        #SGM correlator
+    kernel = (args.kernel, args.kernel)
+    #SGM correlator
+    if spr > 3:
         #kernel = (7,7)
         kernel = (11,11)
         erode = 0
@@ -256,33 +234,24 @@ def main():
     #Set this to smooth the output F.tif with Gaussian filter
     smoothF = True 
 
-    #Set this to mask input to remove vegetation
-    #Much shorter runtimes for PacificNW
-    mask_input = False
-
-    res = 'min'
+    res = args.tr
     #Resample input to something easier to work with
     #res = 4.0
 
-    #User-input low-res velocity maps for seeding
-    #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
-    #Automatically query GoLive velocities here
-    vx_fn = '' 
-    vy_fn = '' 
-
-    #HMA seeding
-    vdir = '/nobackup/deshean/rpcdem/hma/velocity_jpl_amaury_2013-2015'
-    vx_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.x_vel.TIF')
-    vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
-
     #Open input files
-    fn1 = sys.argv[1]
-    fn2 = sys.argv[2]
+    fn1 = args.fn1
+    fn2 = args.fn2 
 
-    #outdir = '%s__%s_vmap' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0])
-    outdir = '%s__%s_vmap_%sm_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
-    #outdir = '%s__%s_vmap_%sm_%ipx_spm%i_seed' % (os.path.splitext(os.path.split(fn1)[1])[0], os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
-    #Note, issues with boost filename length here, just use vmap prefix
+    if not iolib.fn_check(fn1) or not iolib.fn_check(fn2):
+        sys.exit("Unable to locate input files")
+
+    if args.outdir is not None:
+        outdir = args.outdir
+    else:
+        outdir = '%s__%s_vmap_%sm_%ipx_spm%i' % (os.path.splitext(os.path.split(fn1)[1])[0], \
+                os.path.splitext(os.path.split(fn2)[1])[0], res, kernel[0], spr)
+
+    #Note, can encounter filename length issues in boost, just use vmap prefix
     outprefix = '%s/vmap' % (outdir)
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -292,7 +261,6 @@ def main():
 
     if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
         #This should write out files to new subdir
-        #ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='cubic', outdir=outdir)
         ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='average', outdir=outdir)
         #However, if inputs have identical extent/res/proj, then link to original files
         if not os.path.exists(ds1_clip_fn):
@@ -303,7 +271,7 @@ def main():
     #Mask support - limit correlation only to rock/ice surfaces, no water/veg
     #This masks input images - guarantee we won't waste time correlating over vegetation
     #TODO: Add support to load arbitrary raster or shp mask
-    if mask_input:
+    if args.mask_veg:
         ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
         ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
 
@@ -342,7 +310,8 @@ def main():
     stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
     
     #Stereo arguments
-    stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
+    #stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
+    stereo_args = [ds1_clip_fn, dummy_tsai(), ds2_clip_fn, dummy_tsai(), outprefix]
 
     #Run stereo_pprc
     if not os.path.exists(outprefix+'-R_sub.tif'):
@@ -363,7 +332,19 @@ def main():
             sparse_disp_opt.extend(['-P', str(nthreads)])
             sparse_disp_args = [outprefix+'-L.tif', outprefix+'-R.tif', outprefix]
             run_cmd('sparse_disp', sparse_disp_opt+sparse_disp_args, msg='0.5: D_sub generation')
-        elif seedmode == 'velocity':
+        elif seedmode == 'existing_velocity':
+            #User-input low-res velocity maps for seeding
+            #TODO: Add functions that fetch best available velocities for Ant/GrIS or user-defined low-res velocities
+            #Automatically query GoLive velocities here
+            vx_fn = args.vx_fn 
+            vy_fn = args.vy_fn 
+            #Check for existence
+
+            #HMA seeding
+            vdir = '/nobackup/deshean/rpcdem/hma/velocity_jpl_amaury_2013-2015'
+            vx_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.x_vel.TIF')
+            vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
+
             if os.path.exists(vx_fn) and os.path.exists(vy_fn):
                 ds1_res = geolib.get_res(ds1_clip, square=True)[0]
 
@@ -376,8 +357,8 @@ def main():
                 L_sub_res = ds1_res * L_sub_scale
 
                 #Since we are likely upsampling here, use cubicspline
-                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, t_srs=ds1_clip, \
-                        res=L_sub_res, r='cubicspline')
+                vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, \
+                        t_srs=ds1_clip, res=L_sub_res, r='cubicspline')
                 vx = iolib.ds_getma(vx_ds_clip)
                 vy = iolib.ds_getma(vy_ds_clip)
 
@@ -425,8 +406,8 @@ def main():
     geolib.copyproj(outprefix+'-L_sub.tif', outprefix+'-D_sub.tif')
       
     #Mask D_sub to limit correlation over bare earth surfaces
-    #This _should_ be a better approach to masking, but stereo_corr doesn't honor D_sub
-    #Now mask input images before stereo_pprc
+    #This _should_ be a better approach than masking input images, but stereo_corr doesn't honor D_sub
+    #Still need to mask input images before stereo_pprc
     #Left this in here for reference, or if this changes in ASP
     if False:
         D_sub_ds = gdal.Open(outprefix+'-D_sub.tif', gdal.GA_Update)
