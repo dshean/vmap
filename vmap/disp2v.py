@@ -8,9 +8,11 @@
 
 import os
 import sys
+import argparse
+from datetime import timedelta
+
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import timedelta
 
 from pygeotools.lib import iolib, malib, geolib, warplib, timelib
 
@@ -68,29 +70,37 @@ def plotvec(h, v):
     #lbl = '%i m/s' % np.around(scale, decimals=0).astype(int) 
     #qk = plt.quiverkey(Q, 0.05, 0.05, 1, lbl, labelpos='N', fontproperties={'weight':'bold'})
 
+def getparser():
+    parser = argparse.ArgumentParser(description="Convert ASP disparity map to velocity map(s)")
+    parser.add_argument('-dt', type=str, choices=['yr','day'], default='yr', help='Time increment (default: %(default)s)')
+    parser.add_argument('-remove_offsets', action='store_true', help='Remove median offset from stable control surfaces, requires demcoreg or input mask')
+    parser.add_argument('-mask_fn', type=str, default=None, help='Provide existing raster or vector mask for offset correction. If None, will automatically determine valid control surfaces (excluding glaciers, vegetation, etc.). This should work for any supported GDAL/OGR formats. For raster input, expects integer pixel values of 1 for valid control surfaces, 0 for surfaces to ignore during offset determination.')
+    parser.add_argument('-plot', action='store_true', help='Generate plot of velocity magnitude with vectors overlaid')
+    parser.add_argument('fn', type=str, help='Disparity map filename (e.g., *-RD.tif, *-F.tif)')
+    return parser
+
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("Usage is %s F.tif" % os.path.basename(sys.argv[0])) 
+    parser = getparser()
+    args = parser.parse_args()
 
-    #Output m/t_unit
-    t_unit = 'year'
-    #t_unit = 'day'
-
-    #Generate plot of velocity magnitude with vectors overlaid
-    plot = False
-
-    #Remove offsets
-    offset = False 
-
-    #Mask defining static rock surfaces needed to remove horizontal/vertical offsets
-    #If None, will attempt to use NLCD or global bare earth
-    mask_fn = None
+    t_unit = args.dt
+    plot = args.plot 
+    offset = args.remove_offsets 
+    mask_fn = args.mask_fn
+    if mask_fn is not None:
+        offset = True
 
     #Input is 3-band disparity map, extract bands directly
-    src_fn = sys.argv[1]
+    src_fn = args.fn 
+    if not iolib.fn_check(src_fn):
+        sys.exit("Unable to locate input file: %s" % src_fn)
+
     src_ds = iolib.fn_getds(src_fn)
+    if src_ds.RasterCount != 3:
+        sys.exit("Input file must be ASP disparity map (3 bands: x, y, mask)")
     #Extract pixel resolution
     h_res, v_res = geolib.get_res(src_ds)
+
     #Horizontal scale factor
     #If running on disparity_view output (gdal_translate -outsize 5% 5% F.tif F_5.tif)
     #h_res /= 20
@@ -99,6 +109,7 @@ def main():
     #Load horizontal and vertical disparities
     h = iolib.ds_getma(src_ds, bnum=1) 
     v = iolib.ds_getma(src_ds, bnum=2) 
+
     #ASP output has northward motion as negative values in band 2
     v *= -1
 
@@ -106,14 +117,15 @@ def main():
     dt = t2 - t1
     #Default t_factor is in 1/years
     t_factor = timelib.get_t_factor(t1,t2)
+
     #Input timestamp arrays if inputs are mosaics
-    t1_fn = ''
-    t2_fn = ''
-    #t1_fn, t2_fn = sys.argv[2:4]
-    if os.path.exists(t1_fn) and os.path.exists(t2_fn):
-        t_factor = timelib.get_t_factor_fn(t1_fn, t2_fn)
-    if t_factor is None:
-        sys.exit("Unable to determine input timestamps")
+    if False:
+        t1_fn = ''
+        t2_fn = ''
+        if os.path.exists(t1_fn) and os.path.exists(t2_fn):
+            t_factor = timelib.get_t_factor_fn(t1_fn, t2_fn)
+        if t_factor is None:
+            sys.exit("Unable to determine input timestamps")
 
     if t_unit == 'day':
         t_factor *= 365.25
@@ -142,20 +154,27 @@ def main():
     print("Velocity Magnitude stats")
     malib.print_stats(m)
 
+    #Remove x and y offsets over control surfaces
     offset_str = ''
-    #Calibrate over static surfaces
     if offset:
-        #By default, use NLCD, otherwise global bare earth
         if mask_fn is None:
             from demcoreg.dem_mask import get_lulc_mask
-            #Match disparity ds
-            #Can get ds first, check if empty before proceeding
-            #if not geolib.ds_IsEmpty(lulc_ds):
-            #   print("Unable to compute offsets over static control surfaces")
-            print("\nPreparing LULC mask to identify static control surfaces\n")
-            mask = get_lulc_mask(src_ds, mask_glaciers=True)
+            print("\nUsing demcoreg to prepare mask of stable control surfaces\n")
+            mask = get_lulc_mask(src_ds, mask_glaciers=True, filter='rock+ice+water')
         else:
-            mask = iolib.fn_getma(mask_fn)
+            print("\nWarping input raster mask")
+            #This can be from previous dem_mask.py run (e.g. *rockmask.tif)
+            mask_ds = warplib.memwarp_multi_fn([mask_fn,], res=src_ds, extent=src_ds, t_srs=src_ds)[0]
+            mask = iolib.ds_getma(mask_ds)
+            #The default from ds_getma is a masked array, so need to isolate boolean mask
+            #Assume input is 0 for masked, 1 for unmasked (valid control surface)
+            mask = mask.filled().astype('bool')
+            #This should work, as the *rockmask.py is 1 for unmasked, 0 for masked, with ndv=0
+            #mask = np.ma.getmaskarray(mask)
+            #Vector mask - untested
+            if os.path.splitext(mask_fn)[1] == 'shp':
+                mask = geolib.shp2array(mask_fn, src_ds)
+
         print("\nRemoving median x and y offset over static control surfaces")
         h_myr_count = h_myr.count()
         h_myr_static_count = h_myr[mask].count()
@@ -169,7 +188,7 @@ def main():
         print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
         h_myr -= h_myr_med
         v_myr -= v_myr_med 
-        offset_str = '_corr_h%0.2fma_v%0.2fma' % (h_myr_med, v_myr_med)
+        offset_str = '_offsetcorr_h%0.2f_v%0.2f' % (h_myr_med, v_myr_med)
         #Velocity Magnitude
         m = np.ma.sqrt(h_myr**2+v_myr**2)
         print("Velocity Magnitude stats after correction")
@@ -188,9 +207,9 @@ def main():
     proj = src_ds.GetProjection()
     dst_fn = os.path.splitext(src_fn)[0]+'_vm%s.tif' % offset_str
     iolib.writeGTiff(m, dst_fn, create=True, gt=gt, proj=proj)
-    dst_fn = os.path.splitext(src_fn)[0]+'_vx.tif'
+    dst_fn = os.path.splitext(src_fn)[0]+'_vx%s.tif' % offset_str
     iolib.writeGTiff(h_myr, dst_fn, create=True, gt=gt, proj=proj)
-    dst_fn = os.path.splitext(src_fn)[0]+'_vy.tif'
+    dst_fn = os.path.splitext(src_fn)[0]+'_vy%s.tif' % offset_str
     iolib.writeGTiff(v_myr, dst_fn, create=True, gt=gt, proj=proj)
     src_ds = None
 
