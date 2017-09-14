@@ -311,7 +311,7 @@ def main():
     
     #Stereo arguments
     #stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
-    stereo_args = [ds1_clip_fn, dummy_tsai(), ds2_clip_fn, dummy_tsai(), outprefix]
+    stereo_args = [ds1_clip_fn, ds2_clip_fn, dummy_tsai(), dummy_tsai(), outprefix]
 
     #Run stereo_pprc
     if not os.path.exists(outprefix+'-R_sub.tif'):
