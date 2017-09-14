@@ -199,6 +199,7 @@ def getparser():
 
     #This masks input images to improve performance.  Useful for forested areas.
     parser.add_argument('-mask_veg', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
+    parser.add_argument('-filter', action='store_true', help='Filter the output F.tif, smoothing with Gaussian filter')
 
     #Inputs can be images, DEMs, shaded relief maps
     #Personal experience suggests multi-directional hillshades with identical illumination work well
@@ -231,8 +232,8 @@ def main():
         kernel = (11,11)
         erode = 0
 
-    #Set this to smooth the output F.tif with Gaussian filter
-    smoothF = True 
+    #Smooth the output F.tif 
+    smoothF = args.filter 
 
     res = args.tr
     #Resample input to something easier to work with
