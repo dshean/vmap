@@ -167,7 +167,6 @@ def getparser():
     parser = argparse.ArgumentParser(description="Generate velocity map via feature-tracking")
     parser.add_argument('-outdir', default=None, help='Output directory')
     parser.add_argument('-tr', default='min', help='Output resolution (default: %(default)s)')
-
     #Set correlator kernel size
     parser.add_argument('-kernel', type=int, default=35, help='Correlator kernel size. Smaller kernels offer more detail but are prone to more noise. Odd integers required (~9-51 px recommended). (default: %(default)s)')
 
@@ -193,13 +192,12 @@ def getparser():
     #If you can see plenty of texture at 1/32 resolution, go with 5 
     #For featureless areas, limiting to 2 can help, or even 0
     parser.add_argument('-pyramid-levels', type=int, default=5, help='Number of pyramid levels for correlation (default: %(default)s)')
-
     #This helps get rid of bogus "islands" in the disparity maps
     parser.add_argument('-erode', type=int, default=1024, help='Erode isolated blobs smaller than this many pixels. Set to 0 to disable (default: %(default)s)')
-
-    #This masks input images to improve performance.  Useful for forested areas.
-    parser.add_argument('-mask_veg', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
     parser.add_argument('-filter', action='store_true', help='Filter the output F.tif, smoothing with Gaussian filter')
+    #This masks input images to improve performance.  Useful for forested areas.
+    parser.add_argument('-mask_input', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
+    parser.add_argument('-remove_offsets', action='store_true', help='Remove median horizontal and vertical offsets over stable control surfaces')
 
     #Inputs can be images, DEMs, shaded relief maps
     #Personal experience suggests multi-directional hillshades with identical illumination work well
@@ -211,6 +209,9 @@ def getparser():
 def main():
     parser = getparser()
     args = parser.parse_args()
+    if args.seedmode == 'existing_velocity':
+        if args.vx_fn is None or args.vy_fn is None:
+            parser.error('"-seedmode existing_velocity" requires "-vx_fn" and "-vy_fn"')
 
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
@@ -272,7 +273,7 @@ def main():
     #Mask support - limit correlation only to rock/ice surfaces, no water/veg
     #This masks input images - guarantee we won't waste time correlating over vegetation
     #TODO: Add support to load arbitrary raster or shp mask
-    if args.mask_veg:
+    if args.mask_input:
         ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
         ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
 
@@ -490,6 +491,10 @@ def main():
     
     #Generate output velocity products and figure
     cmd = ['disp2v.py', d_fn]
+    #Note: this will attempt to automatically determine control surfaces
+    #disp2v.py will accept arbitrary mask, could pass through here
+    if args.remove_offsets:
+        cmd.append('-remove_offsets')
     print("Converting disparities to velocities")
     print(cmd)
     subprocess.call(cmd)
