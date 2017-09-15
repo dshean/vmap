@@ -40,15 +40,12 @@ def run_cmd(bin, args, **kw):
     if code != 0:
         raise Exception('Stereo step ' + kw['msg'] + ' failed')
 
-def get_stereo_opt(maxnthreads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, erode=0):
+def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, erode=0):
     stereo_opt = []
     #This is irrelevant
     stereo_opt.extend(['-t', 'pinhole'])
     #Set number of threads/cores to use (will use all CPUs if possible)
-    nthreads = iolib.cpu_count() 
-    if nthreads > maxnthreads:
-        nthreads = maxnthreads
-    stereo_opt.extend(['--threads', str(nthreads)])
+    stereo_opt.extend(['--threads', str(threads)])
     #This assumes input images are already mapped 
     stereo_opt.extend(['--alignment-method', 'None'])
     #This should be explored further
@@ -166,6 +163,7 @@ def get_vel(fn, fill=True):
 def getparser():
     parser = argparse.ArgumentParser(description="Generate velocity map via feature-tracking")
     parser.add_argument('-outdir', default=None, help='Output directory')
+    parser.add_argument('-threads', type=int, default=iolib.cpu_count(), help='Number of threads to use(default: %(default)s)')
     parser.add_argument('-tr', default='min', help='Output resolution (default: %(default)s)')
     #Set correlator kernel size
     parser.add_argument('-kernel', type=int, default=35, help='Correlator kernel size. Smaller kernels offer more detail but are prone to more noise. Odd integers required (~9-51 px recommended). (default: %(default)s)')
@@ -219,12 +217,11 @@ def main():
     seedmode = args.seedmode
     spr = args.refinement
     erode = args.erode
-    #Maximum thread count
-    maxnthreads = 28
     #Correlator tile timeout
     #With proper seeding, correlation should be very fast
     #timeout = 360 
     timeout = 1200 
+    threads = args.threads
 
     kernel = (args.kernel, args.kernel)
     #SGM correlator
@@ -309,7 +306,7 @@ def main():
     ds2_clip = iolib.fn_getds(ds1_clip_fn)
 
     #Should have extra kwargs option here
-    stereo_opt = get_stereo_opt(maxnthreads=maxnthreads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
+    stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
     
     #Stereo arguments
     #stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
@@ -331,7 +328,7 @@ def main():
             stereo_opt.extend(['--corr-seed-mode', '3'])
             sparse_disp_opt = []
             sparse_disp_opt.extend(['--Debug', '--coarse', '512', '--fine', '256', '--no_epipolar_fltr']) 
-            sparse_disp_opt.extend(['-P', str(nthreads)])
+            sparse_disp_opt.extend(['-P', str(threads)])
             sparse_disp_args = [outprefix+'-L.tif', outprefix+'-R.tif', outprefix]
             run_cmd('sparse_disp', sparse_disp_opt+sparse_disp_args, msg='0.5: D_sub generation')
         elif seedmode == 'existing_velocity':
