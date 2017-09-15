@@ -10,7 +10,8 @@ Create clean filenames with center date for velocity maps generated from WV DEMs
 """
 
 #Rename all
-#for i in */2*vm.tif; do ln -s $i $(~/src/vmap/vmap/wv_cdate.py $i)_vm.tif; done
+#mkdir vm_rename
+#for i in */2*vm.tif; do ln -s ../$i vm_rename/$(~/src/vmap/vmap/wv_cdate.py $i)_vm.tif; done
 
 fn = sys.argv[1]
 dt_list = timelib.fn_getdatetime_list(fn)
@@ -23,5 +24,7 @@ ndays = timelib.dt_ptp((dtmin, dtmax))
 nyears = ndays/365.25
 #s = '%s_%04idays_%s-%s' % (c_date.strftime('%Y%m%d'), ndays, dtmin.strftime('%Y%m%d'), dtmax.strftime('%Y%m%d'))
 #s = '%s_%s-%s_%0.2fyr' % (c_date.strftime('%Y%m%d'), dtmin.strftime('%Y%m%d'), dtmax.strftime('%Y%m%d'), nyears)
-s = '%s_%s-%s_%04iday' % (c_date.strftime('%Y%m%d'), dtmin.strftime('%Y%m%d'), dtmax.strftime('%Y%m%d'), ndays)
+#s = '%s_%s-%s_%04iday' % (c_date.strftime('%Y%m%d'), dtmin.strftime('%Y%m%d'), dtmax.strftime('%Y%m%d'), ndays)
+#Added %H%M here, as there were some inputs acquired on same days
+s = '%s__%s-%s__%04iday' % (c_date.strftime('%Y%m%d_%H%M'), dtmin.strftime('%Y%m%d_%H%M'), dtmax.strftime('%Y%m%d_%H%M'), ndays)
 print(s)
