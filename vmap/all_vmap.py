@@ -6,7 +6,7 @@ Pipe output to a text file and excecute
 
 Process all shaded relief maps in current directory
 all_vmap.py *DEM_8m_hs_multi.tif > all_vmap_pairs.txt
-parallel -j 16 < all_vmap_pairs.txt
+parallel --delay 0.5 -j 16 < all_vmap_pairs.txt
 """
 
 import sys
@@ -21,10 +21,13 @@ max_ts_diff = timedelta(days=365*3)
 fn_list = np.sort(np.array(sys.argv[1:]))
 ts_list = np.array([timelib.fn_getdatetime(fn) for fn in fn_list])
 
+vmap_arg = ['-filter', '-threads 1', '-tr', '4']
+#vmap_arg = ['-remove_offsets', '-filter', '-threads 1', '-tr', '4']
+
 for i,fn in enumerate(fn_list):
     ts = ts_list[i]
     ts_c = np.array(ts_list[(i+1):])
     ts_diff = ts_c - ts
     idx = (ts_diff < max_ts_diff) & (ts_diff > min_ts_diff)
     for j in fn_list[(idx.nonzero()[0]+(i+1))]:
-        print("vmap.py %s %s" % (fn, j))
+        print("vmap.py %s %s %s" % (' '.join(vmap_arg), fn, j))
