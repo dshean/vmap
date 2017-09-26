@@ -6,7 +6,7 @@ Pipe output to a text file and excecute
 
 Process all shaded relief maps in current directory
 all_vmap.py *DEM_8m_hs_multi.tif > all_vmap_pairs.txt
-parallel --delay 0.5 -j 16 < all_vmap_pairs.txt
+parallel --progress --delay 0.5 -j 16 < all_vmap_pairs.txt
 """
 
 import sys
@@ -15,13 +15,15 @@ import numpy as np
 from pygeotools.lib import timelib
 
 #Set these for min and max time difference
-min_ts_diff = timedelta(days=60)
-max_ts_diff = timedelta(days=365*3) 
+#min_ts_diff = timedelta(days=60)
+min_ts_diff = timedelta(days=14)
+max_ts_diff = timedelta(days=365*2.5) 
 
 fn_list = np.sort(np.array(sys.argv[1:]))
 ts_list = np.array([timelib.fn_getdatetime(fn) for fn in fn_list])
 
-vmap_arg = ['-filter', '-threads 1', '-tr', '4']
+#vmap_arg = ['-filter', '-threads 1', '-tr', '4']
+vmap_arg = ['-filter', '-threads 1', '-tr', '4', '-mask_input', '-dt', 'day']
 #vmap_arg = ['-remove_offsets', '-filter', '-threads 1', '-tr', '4']
 
 for i,fn in enumerate(fn_list):
