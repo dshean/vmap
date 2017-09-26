@@ -303,7 +303,7 @@ def main():
 
     #Load warped versions on disk
     ds1_clip = iolib.fn_getds(ds1_clip_fn)
-    ds2_clip = iolib.fn_getds(ds1_clip_fn)
+    ds2_clip = iolib.fn_getds(ds2_clip_fn)
 
     #Should have extra kwargs option here
     stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
