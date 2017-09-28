@@ -486,7 +486,12 @@ def main():
 
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
-    
+
+    #Check if vm.tif already exists
+    #Should probably just overwrite by default
+    #if os.path.exists(os.path.splitext(d_fn)[0]+'_vm.tif'):
+    #    print("\nFound existing velocity magnitude map!\n"
+    #else:
     #Generate output velocity products and figure
     cmd = ['disp2v.py', d_fn]
     #Note: this will attempt to automatically determine control surfaces
