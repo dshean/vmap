@@ -18,8 +18,8 @@ from pygeotools.lib import iolib,timelib
 in_fn = sys.argv[1]
 #L8_046_027_048_2015_350_2016_033_v1_vv_masked.tif
 a = in_fn.split('_')
-dt1 = timelib.j2dt(int(a[4]), int(a[5]))
-dt2 = timelib.j2dt(int(a[6]), int(a[7]))
+dt1 = timelib.doy2dt(int(a[4]), int(a[5]))
+dt2 = timelib.doy2dt(int(a[6]), int(a[7]))
 dtc = timelib.center_date(dt1, dt2)
 ndays = (dt2 - dt1).days
 out_fn = '%s_%iday_%s-%s_%s' % (dtc.strftime('%Y%m%d'), ndays, dt1.strftime('%Y%m%d'), dt2.strftime('%Y%m%d'), in_fn) 
