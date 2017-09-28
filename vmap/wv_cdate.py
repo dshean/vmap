@@ -10,8 +10,15 @@ Create clean filenames with center date for velocity maps generated from WV DEMs
 """
 
 #Rename all
-#mkdir vm_rename
-#for i in */2*vm.tif; do ln -s ../$i vm_rename/$(~/src/vmap/vmap/wv_cdate.py $i)_vm.tif; done
+#mkdir vm
+#for i in */2*vm.tif; do ln -s ../$i vm/$(~/src/vmap/vmap/wv_cdate.py $i)_vm.tif; done
+#parallel "fn=$(~/src/vmap/vmap/wv_cdate.py {}); ln -s ../{} vm/${fn}_vm.tif" ::: */2*vm.tif
+
+import os
+
+outdir="vm"
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
 
 fn = sys.argv[1]
 dt_list = timelib.fn_getdatetime_list(fn)
@@ -28,3 +35,4 @@ nyears = ndays/365.25
 #Added %H%M here, as there were some inputs acquired on same days
 s = '%s__%s-%s__%04iday' % (c_date.strftime('%Y%m%d_%H%M'), dtmin.strftime('%Y%m%d_%H%M'), dtmax.strftime('%Y%m%d_%H%M'), ndays)
 print(s)
+os.symlink(os.path.join("..", fn), os.path.join(outdir, s+'_vm.tif'))
