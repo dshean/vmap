@@ -16,10 +16,6 @@ Create clean filenames with center date for velocity maps generated from WV DEMs
 
 import os
 
-outdir="vm"
-if not os.path.exists(outdir):
-    os.makedirs(outdir)
-
 fn = sys.argv[1]
 dt_list = timelib.fn_getdatetime_list(fn)
 dt_list = np.sort(dt_list)
@@ -35,4 +31,8 @@ nyears = ndays/365.25
 #Added %H%M here, as there were some inputs acquired on same days
 s = '%s__%s-%s__%04iday' % (c_date.strftime('%Y%m%d_%H%M'), dtmin.strftime('%Y%m%d_%H%M'), dtmax.strftime('%Y%m%d_%H%M'), ndays)
 print(s)
-os.symlink(os.path.join("..", fn), os.path.join(outdir, s+'_vm.tif'))
+
+#outdir="vm"
+#if not os.path.exists(outdir):
+#    os.makedirs(outdir)
+#os.symlink(os.path.join("..", fn), os.path.join(outdir, s+'_vm.tif'))
