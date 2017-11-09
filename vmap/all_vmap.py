@@ -4,9 +4,24 @@
 Create lists of viable velocity pairs
 Pipe output to a text file and excecute
 
+Before running, co-register all DEMs with dem_coreg_all.sh
+
+Create 4-m subsampled versions from 2-m products
+gdal_opt='-co COMPRESS=LZW -co TILED=YES -co BIGTIFF=IF_SAFER'
+parallel "gdalwarp -overwrite $gdal_opt -tr 4 4 -r med {} {.}_4m.tif" ::: *00/dem*/*-DEM_2m_trans.tif
+
 Process all shaded relief maps in current directory
-all_vmap.py *DEM_8m_hs_multi.tif > all_vmap_pairs.txt
+parallel 'hs_multi.sh {}' ::: *00/dem*/*DEM_2m_trans_4m.tif
+
+#Create lists of viable pairs
+mkdir vmap; cd vmap
+all_vmap.py ../*00/dem*/*DEM_2m_trans_4m_hs_multi.tif > all_vmap_pairs.txt
+
+#Run vmap
 parallel --progress --delay 0.5 -j 16 < all_vmap_pairs.txt
+
+#Combine
+post_vmap.sh
 """
 
 import sys
