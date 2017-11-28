@@ -20,12 +20,12 @@ def make_plot(m, fig_fn, label):
     f, ax = plt.subplots(figsize=(7,7))
     #plt.title('%s to %s' % (t1.strftime('%Y-%m-%d'), t2.strftime('%Y-%m-%d')))
     perc = malib.calcperc(m, (2,98))
-    cmap = 'jet'
+    cmap = 'inferno'
     imgplot = ax.imshow(m, cmap=cmap)
     imgplot.set_clim(*perc)
     imgplot.axes.get_xaxis().set_visible(False)
     imgplot.axes.get_yaxis().set_visible(False)
-    imgplot.axes.patch.set_facecolor('black')
+    imgplot.axes.patch.set_facecolor('0.5')
     cb = plt.colorbar(imgplot, orientation='vertical', extend='both', shrink=0.5)
     cb.set_label(label)
     return f, ax
@@ -53,7 +53,7 @@ def plotvec(h, v):
     #Probably want to smooth h and v here, or at least filter outliers
     #Interpolation or hole filling would also help with lots of nodata holes 
     #Compute stats within window centered on X and Y
-    nvec = np.array([20,20], dtype=np.float)
+    nvec = np.array([40,40], dtype=np.float)
     stride = np.round(min(h.shape/nvec)).astype('int')
     X,Y = np.meshgrid(np.arange(0,h.shape[1],stride),np.arange(0,h.shape[0],stride))
     h_sub = h[::stride,::stride]
@@ -184,8 +184,8 @@ def main():
         v_myr_mad = malib.mad(v_myr[mask])
         print("Static pixel count: %i (%0.1f%%)" % (h_myr_static_count, 100*float(h_myr_static_count)/h_myr_count))
         print("median (+/-NMAD)")
-        print("Horizontal: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
-        print("Vertical: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
+        print("x velocity offset: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
+        print("y velocity offset: %0.2f (+/-%0.2f) m/%s" % (v_myr_med, v_myr_mad, t_unit))
         h_myr -= h_myr_med
         v_myr -= v_myr_med 
         offset_str = '_offsetcorr_h%0.2f_v%0.2f' % (h_myr_med, v_myr_med)
