@@ -30,4 +30,6 @@ parallel "dem_mask.py {}-tile-0-median.tif" ::: vm vx vy
 #Compute stats for rock surfaces
 for i in *ref.tif ; do robust_stats.py $i > ${i%.*}_stats.txt ; done
 
+make_stack.py --med -outdir stack vm/*vm.tif
+
 #tar -hczvf khumbu_vel.tar.gz rename
