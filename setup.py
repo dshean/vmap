@@ -16,6 +16,6 @@ setup(name='vmap',
     long_description=open('README.md').read(),
     install_requires=['numpy','gdal','pygeotools','demcoreg'],
     #Note: this will write to /usr/local/bin
-    scripts=['vmap/vmap.py', 'vmap/disp2v.py']
+    #scripts=['vmap/vmap.py', 'vmap/disp2v.py']
 )
 
