@@ -7,15 +7,18 @@ Pipe output to a text file and excecute
 Before running, co-register all DEMs with dem_coreg_all.sh
 
 Create 4-m subsampled versions from 2-m products
-gdal_opt='-co COMPRESS=LZW -co TILED=YES -co BIGTIFF=IF_SAFER'
-parallel "gdalwarp -overwrite $gdal_opt -tr 4 4 -r med {} {.}_4m.tif" ::: *00/dem*/*-DEM_2m_trans.tif
+#Note: the 4-m subsampling can be done on the fly in vmap, best to do hs_multi on 2-m
+#gdal_opt='-co COMPRESS=LZW -co TILED=YES -co BIGTIFF=IF_SAFER'
+#parallel "gdalwarp -overwrite $gdal_opt -tr 4 4 -r med {} {.}_4m.tif" ::: *00/dem*/*-DEM_2m_trans.tif
 
 Process all shaded relief maps in current directory
-parallel 'hs_multi.sh {}' ::: *00/dem*/*DEM_2m_trans_4m.tif
+#parallel 'hs_multi.sh {}' ::: *00/dem*/*DEM_2m_trans_4m.tif
+parallel 'hs_multi.sh {}' ::: *00/dem*/*align/*DEM.tif
 
 #Create lists of viable pairs
 mkdir vmap; cd vmap
-all_vmap.py ../*00/dem*/*DEM_2m_trans_4m_hs_multi.tif > all_vmap_pairs.txt
+all_vmap.py ../*00/dem*/*align/*DEM_hs_multi.tif > all_vmap_pairs.txt
+all_vmap.py ../*00/*16b.tif > all_vmap_pairs.txt
 
 #Run vmap
 parallel --progress --delay 0.5 -j 16 < all_vmap_pairs.txt
@@ -38,7 +41,10 @@ fn_list = np.sort(np.array(sys.argv[1:]))
 ts_list = np.array([timelib.fn_getdatetime(fn) for fn in fn_list])
 
 #vmap_arg = ['-filter', '-threads 1', '-tr', '4']
-vmap_arg = ['-filter', '-threads 1', '-tr', '4', '-mask_input', '-dt', 'day']
+#The bareground masking in HMA can incorrectly remove glacier surfaces
+#vmap_arg = ['-filter', '-threads 1', '-tr', '4', '-mask_input', '-dt', 'day']
+vmap_arg = ['-filter', '-threads 1', '-tr', '4', '-dt', 'day']
+#vmap_arg = ['-filter', '-threads 1', '-tr', '1.0', '-dt', 'day']
 #vmap_arg = ['-remove_offsets', '-filter', '-threads 1', '-tr', '4']
 
 for i,fn in enumerate(fn_list):
