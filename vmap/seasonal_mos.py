@@ -53,7 +53,7 @@ for fn in fn_list:
         if timelib.rel_dt_test(dt1, dt_min, dt_max) and timelib.rel_dt_test(dt2, dt_min, dt_max):
             if dt1.year == dt2.year and dt2 > datetime(dt2.year, *dt_max): 
                 continue
-            print fn
+            print(fn)
             out_fn_list.append(fn)
 
 print(len(out_fn_list))

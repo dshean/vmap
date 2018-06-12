@@ -183,7 +183,7 @@ def getparser():
     #1 is fast but lower quality
     #2 is slow but highest quality, 
     #3 is a good compromise for speed and quality
-    refinement_choices = range(12)
+    refinement_choices = list(range(12))
     parser.add_argument('-refinement', type=int, default=1, help='Sub-pixel refinement type (see ASP doc): 0) None, 1) Parabolic, 2) Bayes, 3) AffineAdaptive 4) LK, 5) Bayes w/gamma, 6) SGM Linear, 7) SGM Poly4, 8) SGM Cos, 9) SGM Parabola, 10) SGM None, 11) SGM Blend (default: %(default)s)')
     #Numer of gaussian pyramids to use
     #Can look at texture in GDAL overviews to make a decision
