@@ -48,6 +48,8 @@ def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, er
     stereo_opt.extend(['--threads', str(threads)])
     #This assumes input images are already mapped 
     stereo_opt.extend(['--alignment-method', 'None'])
+    #This will attempt to remove most of the offset between two images, for relative offsets
+    #stereo_opt.extend(['--alignment-method', 'Homography'])
     #This should be explored further
     stereo_opt.append('--individually-normalize')
     #Integer correlator kernel size
@@ -90,32 +92,6 @@ def make_ln(outdir, outprefix, ext):
         os.remove(ln_fn)
     os.symlink(os.path.split(outprefix)[1]+ext, ln_fn)
     return ln_fn
-
-#Create a dummy camera model file, so we don't have to find it
-#This may no longer be necessary, but was a clever hack 
-#Same as StereoPipeline/data/K10/black_left.tsai
-def dummy_tsai():
-    import tempfile
-    fn = None
-    with tempfile.NamedTemporaryFile(suffix='.tsai',delete=False) as temp:
-        temp.write("""\
-fu = 620.857971191406
-fv = 622.298034667969
-cu = 526.128784179688
-cv = 374.273742675781
-u_direction = 1 0 0
-v_direction = 0 1 0
-w_direction = 0 0 1
-C = 0.0751 -0.065 -0.902
-R = 0.000794376506820371 -0.371711462117335 0.928347972420126 0.997550683961614 -0.0646367856775087 -0.0267342264708707 0.0699428473375328 0.92609539188351 0.370749677327501
-k1 = -0.331998556852341
-k2 = 0.125557452440262
-p1 = -0.000432605884270742
-p2 = 0.00110327918082476""")
-        temp.flush()
-        temp.close()
-        fn = temp.name
-    return fn 
 
 def gen_d_sub(d_sub_fn, dx, dy, pad_perc=0.1, ndv=-9999):
     nl = dx.shape[0]
@@ -310,8 +286,8 @@ def main():
     stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
     
     #Stereo arguments
-    #stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
-    stereo_args = [ds1_clip_fn, ds2_clip_fn, dummy_tsai(), dummy_tsai(), outprefix]
+    stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
+    #stereo_args = [ds1_clip_fn, ds2_clip_fn, dummy_tsai(), dummy_tsai(), outprefix]
 
     #Run stereo_pprc
     if not os.path.exists(outprefix+'-R_sub.tif'):
