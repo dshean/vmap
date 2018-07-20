@@ -2,24 +2,34 @@
 
 #Generate standardized stacks/products from a directory of vmap output
 
-mkdir rename 
-
-for j in vm vx vy
-do
-    echo $j
-    mkdir rename/${j}
-    #This isn't working, fn doesn't get assigned
-    #parallel "fn=$(~/src/vmap/vmap/wv_cdate.py {}); ln -s ../{} rename/${j}/${fn}_${j}.tif" ::: 2*/2*${j}.tif
-    for i in 2*/2*${j}.tif
-    do 
-        ln -sv ../../$i rename/${j}/$(~/src/vmap/vmap/wv_cdate.py $i)_${j}.tif
+if [ ! -d rename ] ; then
+    mkdir rename 
+    for j in vm vx vy
+    do
+        echo $j
+        mkdir rename/${j}
+        for i in 2*/2*${j}.tif
+        do 
+            dst_fn=rename/${j}/$(~/src/vmap/vmap/wv_cdate.py $i)_${j}.tif
+            #For some sites with multiple DEMs acquired on same pass, can have conflicts for timestamps
+            #Hack to append _1 until we have unique filenames
+            while [ -e $dst_fn ]
+            do
+                dst_fn=$(echo $dst_fn | sed "s/_${j}/_1_${j}/")
+            done
+            ln -sv ../../$i $dst_fn
+        done
     done
-done
+fi
 
 cd rename
 
 #Create median, stddev and count products
-parallel "dem_mosaic --{2} -o {1} {1}/*{1}.tif" ::: vm vx vy ::: median stddev count
+parallel --verbose "dem_mosaic --{2} -o {1} {1}/*{1}.tif" ::: vm vx vy ::: median stddev count
+#The median run can use a lot of memory (50 GB for 700 inputs at Rainier)
+#Can lead to memory errors on Pleiades nodes, so split processing
+#parallel --verbose -j 2 "dem_mosaic --threads 10 --median -o {1} {1}/*{1}.tif" ::: vm vx vy 
+#parallel --verbose "dem_mosaic --{2} -o {1} {1}/*{1}.tif" ::: vm vx vy ::: stddev count
 
 #Clip to RGI poylgons
 parallel "clip_raster_by_shp.py -extent raster {}-tile-0-median.tif rgi" ::: vm vx vy
