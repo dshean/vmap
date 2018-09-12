@@ -286,8 +286,15 @@ def main():
     stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
     
     #Stereo arguments
-    stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
-    #stereo_args = [ds1_clip_fn, ds2_clip_fn, dummy_tsai(), dummy_tsai(), outprefix]
+    #Latest version of ASP should accept tif without camera models
+    #stereo_args = [ds1_clip_fn, ds2_clip_fn, outprefix]
+    #Nope - still need to provide dummy camera models, and they must be unique files
+    #Use the dummy.tsai file bundled in the vmap repo
+    dummy_tsai = os.path.join(os.path.split(os.path.realpath(__file__))[0], 'dummy.tsai')
+    dummy_tsai2 = os.path.splitext(dummy_tsai)[0]+'2.tsai'
+    if not os.path.exists(dummy_tsai2):
+        dummy_tsai2 = os.symlink(dummy_tsai, os.path.splitext(dummy_tsai)[0]+'2.tsai')
+    stereo_args = [ds1_clip_fn, ds2_clip_fn, dummy_tsai, dummy_tsai2, outprefix]
 
     #Run stereo_pprc
     if not os.path.exists(outprefix+'-R_sub.tif'):
@@ -469,6 +476,7 @@ def main():
     #    print("\nFound existing velocity magnitude map!\n"
     #else:
     #Generate output velocity products and figure
+    #Requires that vmap repo is in PATH
     cmd = ['disp2v.py', d_fn]
     #Note: this will attempt to automatically determine control surfaces
     #disp2v.py will accept arbitrary mask, could pass through here
