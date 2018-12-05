@@ -30,7 +30,7 @@ def run_cmd(bin, args, **kw):
         "Install ASP and ensure it is in your PATH env variable\n" 
         "https://ti.arc.nasa.gov/tech/asr/intelligent-robotics/ngt/stereo/" % bin)
         sys.exit(msg)
-    call = [binpath]
+    call = [binpath,]
     call.extend(args)
     print(' '.join(call))
     try:
