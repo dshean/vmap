@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/73530559.svg)](https://zenodo.org/badge/latestdoi/73530559)
+
 # vmap 
 
 Velocity map generation using the NASA Ames Stereo Pipeline (ASP) image correlator
