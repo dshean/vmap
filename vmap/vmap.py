@@ -40,16 +40,17 @@ def run_cmd(bin, args, **kw):
     if code != 0:
         raise Exception('Stereo step ' + kw['msg'] + ' failed')
 
-def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, erode=0):
+def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, erode=0, align='None'):
     stereo_opt = []
     #This is irrelevant
     stereo_opt.extend(['-t', 'pinhole'])
     #Set number of threads/cores to use (will use all CPUs if possible)
     stereo_opt.extend(['--threads', str(threads)])
     #This assumes input images are already mapped 
-    stereo_opt.extend(['--alignment-method', 'None'])
+    stereo_opt.extend(['--alignment-method', align])
     #This will attempt to remove most of the offset between two images, for relative offsets
     #stereo_opt.extend(['--alignment-method', 'Homography'])
+    #stereo_opt.append('--ip-debug-images')
     #This should be explored further
     stereo_opt.append('--individually-normalize')
     #Integer correlator kernel size
@@ -232,58 +233,70 @@ def main():
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
-    ds1_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn1))[0]+'_warp.tif')
-    ds2_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn2))[0]+'_warp.tif')
+    #Check to see if inputs have geolocation and projection information
+    ds1 = iolib.fn_getds(fn1)
+    ds2 = iolib.fn_getds(fn2)
 
-    if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
-        #This should write out files to new subdir
-        ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='average', outdir=outdir)
-        #However, if inputs have identical extent/res/proj, then link to original files
-        if not os.path.exists(ds1_clip_fn):
-            os.symlink(os.path.abspath(fn1), ds1_clip_fn)
-        if not os.path.exists(ds2_clip_fn):
-            os.symlink(os.path.abspath(fn2), ds2_clip_fn)
+    if geolib.srs_check(ds1) and geolib.srs_check(ds2):
+        ds1_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn1))[0]+'_warp.tif')
+        ds2_clip_fn = os.path.join(outdir, os.path.splitext(os.path.basename(fn2))[0]+'_warp.tif')
 
-    #Mask support - limit correlation only to rock/ice surfaces, no water/veg
-    #This masks input images - guarantee we won't waste time correlating over vegetation
-    #TODO: Add support to load arbitrary raster or shp mask
-    if args.mask_input:
-        ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
-        ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
+        if not os.path.exists(ds1_clip_fn) or not os.path.exists(ds2_clip_fn):
+            #This should write out files to new subdir
+            ds1_clip, ds2_clip = warplib.diskwarp_multi_fn([fn1, fn2], extent='intersection', res=res, r='average', outdir=outdir)
+            ds1_clip = None
+            ds2_clip = None
+            #However, if inputs have identical extent/res/proj, then link to original files
+            if not os.path.exists(ds1_clip_fn):
+                os.symlink(os.path.abspath(fn1), ds1_clip_fn)
+            if not os.path.exists(ds2_clip_fn):
+                os.symlink(os.path.abspath(fn2), ds2_clip_fn)
+            align = 'None'
 
-        if not os.path.exists(ds1_masked_fn) or not os.path.exists(ds2_masked_fn):
-            #Load NLCD or bareground mask
-            from demcoreg.dem_mask import get_lulc_mask
+        #Mask support - limit correlation only to rock/ice surfaces, no water/veg
+        #This masks input images - guarantee we won't waste time correlating over vegetation
+        #TODO: Add support to load arbitrary raster or shp mask
+        if args.mask_input:
+            ds1_masked_fn = os.path.splitext(ds1_clip_fn)[0]+'_masked.tif'
+            ds2_masked_fn = os.path.splitext(ds2_clip_fn)[0]+'_masked.tif'
 
-            ds1_clip = iolib.fn_getds(ds1_clip_fn)
-            lulc_mask_fn = os.path.join(outdir, 'lulc_mask.tif')
-            #if not os.path.exists(nlcd_mask_fn):
-            lulc_mask = get_lulc_mask(ds1_clip, mask_glaciers=False, filter='not_forest')
-            iolib.writeGTiff(lulc_mask, lulc_mask_fn, ds1_clip) 
+            if not os.path.exists(ds1_masked_fn) or not os.path.exists(ds2_masked_fn):
+                #Load NLCD or bareground mask
+                from demcoreg.dem_mask import get_lulc_mask
 
-            #Now apply to original images 
-            #This could be problematic for huge inputs, see apply_mask.py
-            #lulc_mask = lulc_mask.astype(int)
-            for fn in (ds1_clip_fn, ds2_clip_fn):
-                ds = iolib.fn_getds(fn)
-                a = iolib.ds_getma(ds)
-                a = np.ma.array(a, mask=~(lulc_mask))
-                if a.count() > 0:
-                    out_fn = os.path.splitext(fn)[0]+'_masked.tif'
-                    iolib.writeGTiff(a,out_fn,ds)
-                    a = None
-                else:
-                    sys.exit("No unmasked pixels over bare earth")
+                ds1_clip = iolib.fn_getds(ds1_clip_fn)
+                lulc_mask_fn = os.path.join(outdir, 'lulc_mask.tif')
+                #if not os.path.exists(nlcd_mask_fn):
+                lulc_mask = get_lulc_mask(ds1_clip, mask_glaciers=False, filter='not_forest')
+                iolib.writeGTiff(lulc_mask, lulc_mask_fn, ds1_clip) 
+                ds1_clip = None
 
-        ds1_clip_fn = ds1_masked_fn
-        ds2_clip_fn = ds2_masked_fn
-
-    #Load warped versions on disk
-    ds1_clip = iolib.fn_getds(ds1_clip_fn)
-    ds2_clip = iolib.fn_getds(ds2_clip_fn)
+                #Now apply to original images 
+                #This could be problematic for huge inputs, see apply_mask.py
+                #lulc_mask = lulc_mask.astype(int)
+                for fn in (ds1_clip_fn, ds2_clip_fn):
+                    ds = iolib.fn_getds(fn)
+                    a = iolib.ds_getma(ds)
+                    a = np.ma.array(a, mask=~(lulc_mask))
+                    if a.count() > 0:
+                        out_fn = os.path.splitext(fn)[0]+'_masked.tif'
+                        iolib.writeGTiff(a,out_fn,ds)
+                        a = None
+                    else:
+                        sys.exit("No unmasked pixels over bare earth")
+            ds1_clip_fn = ds1_masked_fn
+            ds2_clip_fn = ds2_masked_fn
+    else:
+        ds1_clip_fn = fn1
+        ds2_clip_fn = fn2
+        #align = 'Homography'
+        align = 'AffineEpipolar'
+    ds1 = None
+    ds2 = None
 
     #Should have extra kwargs option here
-    stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, erode=erode, spr=spr)
+    stereo_opt = get_stereo_opt(threads=threads, kernel=kernel, timeout=timeout, \
+            erode=erode, spr=spr, align=align)
     
     #Stereo arguments
     #Latest version of ASP should accept tif without camera models
@@ -329,6 +342,7 @@ def main():
             vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
 
             if os.path.exists(vx_fn) and os.path.exists(vy_fn):
+                ds1_clip = iolib.fn_getds(ds1_clip_fn)
                 ds1_res = geolib.get_res(ds1_clip, square=True)[0]
 
                 #Compute L_sub res - use this for output dimensions
@@ -342,6 +356,10 @@ def main():
                 #Since we are likely upsampling here, use cubicspline
                 vx_ds_clip, vy_ds_clip = warplib.memwarp_multi_fn([vx_fn, vy_fn], extent=ds1_clip, \
                         t_srs=ds1_clip, res=L_sub_res, r='cubicspline')
+
+                ds1_clip = None
+
+                #Get vx and vy arrays
                 vx = iolib.ds_getma(vx_ds_clip)
                 vy = iolib.ds_getma(vy_ds_clip)
 
@@ -462,10 +480,6 @@ def main():
             b.WriteArray(b_fill_bma)
         F_fill_ds = None
         d_fn = make_ln(outdir, outprefix, '-F_smooth.tif')
-
-    #Delete intermediate files
-    ds1_clip = None
-    ds2_clip = None
 
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
