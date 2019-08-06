@@ -144,7 +144,8 @@ def getparser():
     parser.add_argument('-tr', default='min', help='Output resolution (default: %(default)s)')
     #Set correlator kernel size
     parser.add_argument('-kernel', type=int, default=35, help='Correlator kernel size. Smaller kernels offer more detail but are prone to more noise. Odd integers required (~9-51 px recommended). (default: %(default)s)')
-
+    align_choices = ['AffineEpipolar', 'Homography', 'Epipolar', 'None']
+    parser.add_argument('-align', default='None', choices=align_choices, help='Alignment method to warp second image to match first image, if not already orthorectified. Provides flexibility for L1B inputs')
     #Integer correlator seeding
     #D_sub is low-resolution correlation (default), which works well for most situations
     #sparse_disp will use sparse seeding from full-res chips, useful for ice sheets with limited low-frequency texture
@@ -192,6 +193,7 @@ def main():
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
 
+    align = args.align
     seedmode = args.seedmode
     spr = args.refinement
     erode = args.erode
@@ -289,8 +291,9 @@ def main():
     else:
         ds1_clip_fn = fn1
         ds2_clip_fn = fn2
+        #Now let user specify alignment methods as option - don't hardcode
         #align = 'Homography'
-        align = 'AffineEpipolar'
+        #align = 'AffineEpipolar'
     ds1 = None
     ds2 = None
 
