@@ -174,7 +174,7 @@ def getparser():
     #This masks input images to improve performance.  Useful for forested areas.
     parser.add_argument('-mask_input', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
     parser.add_argument('-remove_offsets', action='store_true', help='Remove median horizontal and vertical offsets over stable control surfaces')
-    parser.add_argument('-dt', type=str, choices=['yr','day'], default='yr', help='Time increment (default: %(default)s)')
+    parser.add_argument('-dt', type=str, choices=['yr','day','none'], default='yr', help='Time increment (default: %(default)s)')
 
     #Inputs can be images, DEMs, shaded relief maps
     #Personal experience suggests multi-directional hillshades with identical illumination work well
@@ -487,22 +487,24 @@ def main():
     print('\n%s' % datetime.now())
     print('%s UTC\n' % datetime.utcnow())
 
-    #Check if vm.tif already exists
-    #Should probably just overwrite by default
-    #if os.path.exists(os.path.splitext(d_fn)[0]+'_vm.tif'):
-    #    print("\nFound existing velocity magnitude map!\n"
-    #else:
-    #Generate output velocity products and figure
-    #Requires that vmap repo is in PATH
-    cmd = ['disp2v.py', d_fn]
-    #Note: this will attempt to automatically determine control surfaces
-    #disp2v.py will accept arbitrary mask, could pass through here
-    if args.remove_offsets:
-        cmd.append('-remove_offsets')
-    cmd.extend(['-dt', args.dt])
-    print("Converting disparities to velocities")
-    print(cmd)
-    subprocess.call(cmd)
+    #If time interval is specified, convert pixel displacements to rates
+    if args.dt != 'none':
+        #Check if vm.tif already exists
+        #Should probably just overwrite by default
+        #if os.path.exists(os.path.splitext(d_fn)[0]+'_vm.tif'):
+        #    print("\nFound existing velocity magnitude map!\n"
+        #else:
+        #Generate output velocity products and figure
+        #Requires that vmap repo is in PATH
+        cmd = ['disp2v.py', d_fn]
+        #Note: this will attempt to automatically determine control surfaces
+        #disp2v.py will accept arbitrary mask, could pass through here
+        if args.remove_offsets:
+            cmd.append('-remove_offsets')
+        cmd.extend(['-dt', args.dt])
+        print("Converting disparities to velocities")
+        print(cmd)
+        subprocess.call(cmd)
 
 if __name__ == "__main__":
     main()
