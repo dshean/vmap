@@ -22,7 +22,7 @@ Generate a velocity map from two orthorectified images (or any raster in project
 
 Convert output ASP disparity map to m/yr or m/day:
 - `disp2v.py img1_YYYYMMDD__img2_YYYYMMDD_vmap/img1_YYYYMMDD__img2_YYYYMMDD_vmap-F.tif`
-- Output: `'_vm.tif'` (velocity magnitude in m/yr or m/day), `'_vx.tif'` (horizontal velocity component), `'_vy.tif'` (vertical velocity component)
+- Output: `'_vm.tif'` (velocity magnitude in m/yr or m/day), `'_vx.tif'` (x velocity component), `'_vy.tif'` (y velocity component)
 
 Preview subsampled version of disparity map:
 - `disp_view.sh img1_YYYYMMDD__img2_YYYYMMDD_vmap/img1_YYYYMMDD__img2_YYYYMMDD_vmap-F.tif`
