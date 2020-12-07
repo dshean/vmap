@@ -13,7 +13,7 @@ import argparse
 import subprocess
 from datetime import datetime, timedelta
 from distutils.spawn import find_executable
-
+from demcoreg import dem_mask
 from osgeo import gdal
 import numpy as np
 
@@ -174,6 +174,11 @@ def getparser():
     #This masks input images to improve performance.  Useful for forested areas.
     parser.add_argument('-mask_input', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
     parser.add_argument('-remove_offsets', action='store_true', help='Remove median horizontal and vertical offsets over stable control surfaces')
+    final_res_choices = [1,2,4,8]
+    parser.add_argument('-final_res_factor',type=int,default=1,choices=final_res_choices,
+                        help='Factor (Overview level) of input resultion (-tr) at which final velocity will be posted (default: %(default)s)')
+    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
+            help='Define masks to use to limit reference surfaces for co-registration')
     parser.add_argument('-dt', type=str, choices=['yr','day','none'], default='yr', help='Time increment (default: %(default)s)')
 
     #Inputs can be images, DEMs, shaded relief maps
@@ -501,6 +506,8 @@ def main():
         #disp2v.py will accept arbitrary mask, could pass through here
         if args.remove_offsets:
             cmd.append('-remove_offsets')
+            cmd.extend(['-mask_list']+args.mask_list)
+        cmd.extend(['-final_res_factor',str(args.final_res_factor)])
         cmd.extend(['-dt', args.dt])
         print("Converting disparities to velocities")
         print(cmd)

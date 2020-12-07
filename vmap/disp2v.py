@@ -13,7 +13,7 @@ from datetime import timedelta
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+from demcoreg import dem_mask
 from pygeotools.lib import iolib, malib, geolib, warplib, timelib
 import gdal
 
@@ -88,37 +88,13 @@ def build_gauss_overview(fn,side_carr=True):
         open_mode = 1 # open dataset in write, overviews will be attached to dataset itself
     img_ds = gdal.Open(fn,open_mode)
     
-    gdal.SetConfigOption('COMPRESS_OVERVIEW=LZW','BIGTIFF_OVERVIEW=YES')
+    gdal.SetConfigOption('COMPRESS_OVERVIEW','LZW')
+    gdal.SetConfigOption('BIGTIFF_OVERVIEW','YES')
     print("Building Overviews")
     img_ds.BuildOverviews("gauss",[2,4,8])
     del img_ds
     
-def read_overviews(ds,bnum=1,ovr_level=1):
-    """
-    Function to read specied overview level from a gdal dataset
-    Parameters
-    -----------
-    ds: gdal dataset
-        dataset whose overview needs to be read
-    bnum: int
-        band number for which overview needs to be read
-    ovr_level: int
-        overview level to be read
-    Returns
-    -----------
-    ma_ovr: np.ma array
-        masked array of the read overview
-    """
-    # read the corresponding band
-    b = ds.GetRasterBand(bnum)
-    b_ndv = geolib.get_ndv_b(b)
-    # read overview into array
-    ovr_array = b.GetOverviews(ovr_level)
-    # mask for no-data values
-    ma_ovr = np.ma.masked_values(ovr_array,b_ndv)
-    return ma_ovr
-
-    
+ 
 def getparser():
     parser = argparse.ArgumentParser(description="Convert ASP disparity map to velocity map(s)")
     parser.add_argument('-dt', type=str, choices=['yr','day'], default='yr', help='Time increment (default: %(default)s)')
@@ -126,8 +102,10 @@ def getparser():
     parser.add_argument('-mask_fn', type=str, default=None, help='Provide existing raster or vector mask for offset correction. If None, will automatically determine valid control surfaces (excluding glaciers, vegetation, etc.). This should work for any supported GDAL/OGR formats. For raster input, expects integer pixel values of 1 for valid control surfaces, 0 for surfaces to ignore during offset determination.')
     parser.add_argument('-plot', action='store_true', help='Generate plot of velocity magnitude with vectors overlaid')
     final_res_choices = [1,2,4,8]
-    parser.add_argument('-final_res_factor',type='int',default=1,choices=final_res_choices,
+    parser.add_argument('-final_res_factor',type=int,default=1,choices=final_res_choices,
                         help='Factor (Overview level) of input resultion (-tr) at which final velocity will be posted (default: %(default)s)')
+    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
+            help='Define masks to use to limit reference surfaces for co-registration')
     parser.add_argument('disp_fn', type=str, help='Disparity map filename (e.g., *-RD.tif, *-F.tif)')
     return parser
 
@@ -164,21 +142,20 @@ def main():
     res_factor = args.final_res_factor
 
     if res_factor>1:
-        h_res = h_res*res_factor
-        v_res = v_res*res_factor
+        # the disparity map is in units of pixel, calculated at native resolution
+        # when converting to displacement, the unit there should remain the same
+        # so we should not be applying a res_factor to resolution
+        #h_res = h_res*res_factor
+        #v_res = v_res*res_factor
         # Build gaussian overviews
         build_gauss_overview(src_fn)
-        # determine required_overview level
-        possible_ovr_levels = np.array([1,2,3])
-        possible_res_levels = np.power(2,possible_ovr_levels)
-        # add 1 to account for numpy indexing
-        over_idx = np.where(possible_res_levels==res_factor)[0]+1
-        # finally read the two arrays at the given overview levels
-        h = read_overviews(src_ds,1,over_idx)
-        v = read_overviews(src_ds,2,over_idx)
+        # read the reduced file now
+        # src_ds is replaced by the subsampled ds from here on
+        h,src_ds = iolib.fn_getma_sub(src_fn,bnum=1,scale=res_factor,return_ds=True)
+        v = iolib.fn_getma_sub(src_fn,bnum=2,scale=res_factor)
         # string for future filename saving
-        res_factor_string=f'_{res_factor}x_'
- 
+        res_factor_string=f'_{res_factor}x'
+
     else:
         # read the arrays at full resolution of correlation
         #Load horizontal and vertical disparities
@@ -234,13 +211,13 @@ def main():
     offset_str = ''
     if remove_offsets:
         if mask_fn is None:
-            from demcoreg.dem_mask import get_mask
             print("\nUsing demcoreg to prepare mask of stable control surfaces\n")
             #mask = get_lulc_mask(src_ds, mask_glaciers=True, filter='rock+ice+water')
             # just have glaciers for now
             #TODO:
-            # Extend to LULC or barground based on raster extent (CONUS or not)
-            mask = get_mask(src_ds,mask_list=['glaciers'],dem_fn=src_fn)
+            # Probably best to predefine mask over static low sloped area and pass via mask_fn option
+            mask_list = args.mask_list
+            mask = dem_mask.get_mask(src_ds,mask_list=['glaciers'],dem_fn=src_fn)
         else:
             print("\nWarping input raster mask")
             #This can be from previous dem_mask.py run (e.g. *rockmask.tif)
@@ -284,13 +261,14 @@ def main():
 
     print("Writing out files") 
     # the geotranform would need to be adjusted for overview
+    # src_ds is now updated if low res overview
     gt = src_ds.GetGeoTransform()
     proj = src_ds.GetProjection()
-    dst_fn = os.path.splitext(src_fn)[0]+'_vm%s.tif' % offset_str
+    dst_fn = f'{os.path.splitext(src_fn)[0]}_vm{res_factor_string}{offset_str}.tif'
     iolib.writeGTiff(m, dst_fn, create=True, gt=gt, proj=proj)
-    dst_fn = os.path.splitext(src_fn)[0]+'_vx%s.tif' % offset_str
+    dst_fn = f'{os.path.splitext(src_fn)[0]}_vx{res_factor_string}{offset_str}.tif'
     iolib.writeGTiff(h_myr, dst_fn, create=True, gt=gt, proj=proj)
-    dst_fn = os.path.splitext(src_fn)[0]+'_vy%s.tif' % offset_str
+    dst_fn = f'{os.path.splitext(src_fn)[0]}_vy{res_factor_string}{offset_str}.tif'
     iolib.writeGTiff(v_myr, dst_fn, create=True, gt=gt, proj=proj)
     src_ds = None
 
