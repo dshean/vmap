@@ -71,28 +71,69 @@ def plotvec(h, v):
     #lbl = '%i m/s' % np.around(scale, decimals=0).astype(int) 
     #qk = plt.quiverkey(Q, 0.05, 0.05, 1, lbl, labelpos='N', fontproperties={'weight':'bold'})
 
-def build_gauss_overview(fn,side_carr=True):
+def ovr_resample(src_fn,res_factor,src_ds=None):
     """
-    build overviews using Gaussian resampling method
+    build overviews using Gaussian resampling method and returned subsampled masked arrays and dataset at a given scale
     #https://stackoverflow.com/questions/33158526/how-to-correctly-use-gdaladdo-in-a-python-program
+    # glued together from several pygeotools functions
+
     Parameters
     -----------
-    fn: str
-        filepath
-    side_carr: bool
-        If true, overviews will be saved in *.ovr files
+    src_ds: gdal.Dataset
+        path to gdal dataset
+    src_fn: str
+        path to ASP 3-band disparity map
+    res_factor: int
+        final scale at which subsampling is desired
+    Returns
+    -----------
+    h_sub: np.ma.array
+        subsampled horizontal disparities
+    v_sub: np.ma.array
+        subsampled vertical disparities
+    src_ds: gdal.Dataset
+        dataset at sampled at specified scale
     """
-    if side_carr:
-        open_mode = 0 # open dataset in readonly mode
-    else:
-        open_mode = 1 # open dataset in write, overviews will be attached to dataset itself
-    img_ds = gdal.Open(fn,open_mode)
-    
+    # need to create padded dataset to handle dataset with odd dimensions
+    # prevents sub-pixel shifts due to resampling
+    if src_ds is None:
+        src_ds = iolib.fn_getds(src_fn)
+    ns = src_ds.RasterXSize
+    nl = src_ds.RasterYSize
+    # now pad with max overview scale
+    p_olist = np.power(2,np.arange(1,10))
+    olist = list(p_olist[p_olist<=res_factor])
+    ns_pad = int((np.floor(ns/res_factor)+1)*res_factor)
+    nl_pad = int((np.floor(nl/res_factor)+1)*res_factor)
+    dtype = src_ds.GetRasterBand(1).DataType
+    ns_pad_diff = ns_pad - ns
+    nl_pad_diff = nl_pad - nl
+    xres,yres = geolib.get_res(src_ds)
+    # need to maintain geotransform so pad extent properly
+    xshift = ns_pad_diff*xres # this will be added to xmax
+    yshift = nl_pad_diff*yres # this will be subtracted from ymin
+    init_extent = geolib.ds_extent(src_ds)
+    final_extent = [init_extent[0],init_extent[1]-yshift,init_extent[2]+xshift,init_extent[3]]
+    projwin_extent = [final_extent[0],final_extent[3],final_extent[2],final_extent[1]]
+    # get padded in-memory vrt with gdal_translate
+    # due to a bug, need to write vrt to disk using the src_fn file path and then re-read the vrt to get overviews
+    # see here: # http://osgeo-org.1560.x6.nabble.com/gdal-dev-Python-bindings-BuildOverviews-not-supported-for-VRT-dataset-td5429453.html
+    # Latest gdal should have this fixed
+    tgt_vrt = os.path.splitext(src_fn)[0]+'_gdal.vrt'
+    mem_vrt = gdal.Translate(tgt_vrt,src_fn,width=ns_pad,height=nl_pad,format='VRT',projWin = projwin_extent)
+    # close the mem_vrt dataset and then re-read
+    mem_vrt = None
+    mem_vrt = iolib.fn_getds(tgt_vrt)
+    # now we build the overviews
     gdal.SetConfigOption('COMPRESS_OVERVIEW','LZW')
     gdal.SetConfigOption('BIGTIFF_OVERVIEW','YES')
     print("Building Overviews")
-    img_ds.BuildOverviews("gauss",[2,4,8])
-    del img_ds
+    mem_vrt.BuildOverviews("gauss",olist)
+    # now read the bands and the corresponding dataset
+    h_sub,src_ds = iolib.ds_getma_sub(mem_vrt,bnum=1,scale=res_factor,return_ds=True)
+    v_sub = iolib.ds_getma_sub(mem_vrt,bnum=2,scale=res_factor)
+    mem_vrt = None
+    return h_sub,v_sub,src_ds
     
  
 def getparser():
@@ -104,9 +145,10 @@ def getparser():
     final_res_choices = [1,2,4,8]
     parser.add_argument('-final_res_factor',type=int,default=1,choices=final_res_choices,
                         help='Factor (Overview level) of input resultion (-tr) at which final velocity will be posted (default: %(default)s)')
-    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
-            help='Define masks to use to limit reference surfaces for co-registration')
     parser.add_argument('disp_fn', type=str, help='Disparity map filename (e.g., *-RD.tif, *-F.tif)')
+    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
+            help='Define masks to use to limit stable control surfaces for -remove_offsets option\
+                 (**NOTE**: If provided, mask_list option should be specified as last input)')
     return parser
 
 def main():
@@ -147,12 +189,9 @@ def main():
         # so we should not be applying a res_factor to resolution
         #h_res = h_res*res_factor
         #v_res = v_res*res_factor
-        # Build gaussian overviews
-        build_gauss_overview(src_fn)
-        # read the reduced file now
-        # src_ds is replaced by the subsampled ds from here on
-        h,src_ds = iolib.fn_getma_sub(src_fn,bnum=1,scale=res_factor,return_ds=True)
-        v = iolib.fn_getma_sub(src_fn,bnum=2,scale=res_factor)
+        # Build  gaussian overviews and read arrays,datset at specified res_factor
+        # src_ds is swapped at this stage
+        h,v,src_ds = ovr_resample(src_fn,res_factor,src_ds)
         # string for future filename saving
         res_factor_string=f'_{res_factor}x'
 

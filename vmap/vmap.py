@@ -172,15 +172,15 @@ def getparser():
     parser.add_argument('-erode', type=int, default=1024, help='Erode isolated blobs smaller than this many pixels. Set to 0 to disable (default: %(default)s)')
     parser.add_argument('-filter', action='store_true', help='Filter the output F.tif, smoothing with Gaussian filter')
     #This masks input images to improve performance.  Useful for forested areas.
-    parser.add_argument('-mask_input', action='store_true', help='Mask any vegetation/water in input images. Requires demcoreg')
-    parser.add_argument('-remove_offsets', action='store_true', help='Remove median horizontal and vertical offsets over stable control surfaces')
+    parser.add_argument('-mask_input', action='store_true', help='Mask any vegetation/water in input images before correlation. Requires demcoreg')
     final_res_choices = [1,2,4,8]
     parser.add_argument('-final_res_factor',type=int,default=1,choices=final_res_choices,
                         help='Factor (Overview level) of input resultion (-tr) at which final velocity will be posted (default: %(default)s)')
-    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
-            help='Define masks to use to limit reference surfaces for co-registration')
     parser.add_argument('-dt', type=str, choices=['yr','day','none'], default='yr', help='Time increment (default: %(default)s)')
-
+    parser.add_argument('-remove_offsets', action='store_true', help='Remove median horizontal and vertical offsets over stable control surfaces')
+    parser.add_argument('-mask_list', nargs='*', type=str, default=['glaciers'], choices=dem_mask.mask_choices, \
+            help='Define masks to use to limit stable control surfaces for -remove_offsets option\
+                 (**NOTE**: If provided, mask_list option should be specified as last input)')
     #Inputs can be images, DEMs, shaded relief maps
     #Personal experience suggests multi-directional hillshades with identical illumination work well
     #Only 2 input datsets allowed for this - want to stay modular
@@ -192,7 +192,7 @@ def main():
     parser = getparser()
     args = parser.parse_args()
     if args.seedmode == 'existing_velocity':
-        if args.vx_fn is None or args.vy_fn is None:
+        if args.vx_fn is None or args.vy_fn is None
             parser.error('"-seedmode existing_velocity" requires "-vx_fn" and "-vy_fn"')
 
     print('\n%s' % datetime.now())
