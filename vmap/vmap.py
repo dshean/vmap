@@ -65,9 +65,9 @@ def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, er
     #If using Semi-global matching (spr 0):
     if spr > 3:
         #Use SGM
-        stereo_opt.extend(['--stereo-algorithm', '1'])
+        stereo_opt.extend(['--stereo-algorithm', 'asp_sgm'])
         #Use MGM
-        #stereo_opt.extend(['--stereo-algorithm', '2'])
+        #stereo_opt.extend(['--stereo-algorithm', 'asp_mgm'])
         #bro nodes had 128 GB of RAM, 28 threads, ~4.7 GB/thread
         stereo_opt.extend(['--corr-tile-size', '3600'])
         stereo_opt.extend(['--xcorr-threshold', '-1'])
@@ -77,6 +77,7 @@ def get_stereo_opt(threads=28, kernel=(35,35), nlevels=5, spr=1, timeout=360, er
         #Sub-pixel kernel size (ASP default is 35)
         #Set to same as integer correlator kernel
         stereo_opt.extend(['--subpixel-kernel', str(kernel[0]), str(kernel[1])])
+        stereo_opt.extend(['--stereo-algorithm','asp_bm'])
         #Note: stereo_fltr throws out a lot of good data when noisy
         #Want to play with the following options
         #--rm-half-kernel 5 5
