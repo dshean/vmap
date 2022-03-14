@@ -340,9 +340,9 @@ def main():
             #Check for existence
 
             #HMA seeding
-            vdir = '/nobackup/deshean/rpcdem/hma/velocity_jpl_amaury_2013-2015'
-            vx_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.x_vel.TIF')
-            vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
+            #vdir = '/nobackup/deshean/rpcdem/hma/velocity_jpl_amaury_2013-2015'
+            #vx_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.x_vel.TIF')
+            #vy_fn = os.path.join(vdir, 'PKH_WRS2_B8_2013_2015_snr5_n1_r170_res12.y_vel.TIF')
 
             if os.path.exists(vx_fn) and os.path.exists(vy_fn):
                 ds1_clip = iolib.fn_getds(ds1_clip_fn)
