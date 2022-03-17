@@ -158,9 +158,13 @@ def main():
     offset_str = ''
     if remove_offsets:
         if mask_fn is None:
-            from demcoreg.dem_mask import get_lulc_mask
+            from demcoreg.dem_mask import get_mask
             print("\nUsing demcoreg to prepare mask of stable control surfaces\n")
-            mask = get_lulc_mask(src_ds, mask_glaciers=True, filter='rock+ice+water')
+            #TODO: Accept mask_list as in demcoreg
+            #mask_list = args.mask_list
+            # for now keep it simple, limit to non-glacier surfaces
+            mask_list = ['glaciers',]
+            mask = get_mask(src_ds, mask_list=mask_list, dem_fn=src_fn)
         else:
             print("\nWarping input raster mask")
             #This can be from previous dem_mask.py run (e.g. *rockmask.tif)
@@ -177,11 +181,10 @@ def main():
 
         print("\nRemoving median x and y offset over static control surfaces")
         h_myr_count = h_myr.count()
-        h_myr_static_count = h_myr[mask].count()
-        h_myr_med = malib.fast_median(h_myr[mask])
-        v_myr_med = malib.fast_median(v_myr[mask])
-        h_myr_mad = malib.mad(h_myr[mask])
-        v_myr_mad = malib.mad(v_myr[mask])
+        h_myr_static_count = np.ma.array(h_myr,mask=mask).count()
+        h_myr_mad,h_myr_med = malib.mad(np.ma.array(h_myr,mask=mask),return_med=True)
+        v_myr_mad,v_myr_med = malib.mad(np.ma.array(v_myr,mask=mask),return_med=True)
+
         print("Static pixel count: %i (%0.1f%%)" % (h_myr_static_count, 100*float(h_myr_static_count)/h_myr_count))
         print("median (+/-NMAD)")
         print("x velocity offset: %0.2f (+/-%0.2f) m/%s" % (h_myr_med, h_myr_mad, t_unit))
